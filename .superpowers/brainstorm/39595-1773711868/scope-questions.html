@@ -1,0 +1,83 @@
+<h2>Scoping the TinkerCAD-style Modeling</h2>
+<p class="subtitle">A few quick questions to define what we're building</p>
+
+<div class="section">
+  <h3>1. How should boolean operations work in the UI?</h3>
+  <div class="options">
+    <div class="option" data-choice="workflow-a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>TinkerCAD-style: Drag → Overlap → Group</h3>
+        <p>User places shapes, positions them overlapping, selects multiple shapes, then clicks <strong>"Group"</strong> (union) or marks a shape as a <strong>"Hole"</strong> (subtract). Simple and intuitive.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="workflow-b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>Explicit Boolean Toolbar</h3>
+        <p>Select two shapes → click <strong>Union / Subtract / Intersect</strong> from a toolbar. More flexible (supports intersection), more traditional CAD workflow.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="workflow-c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>Both — TinkerCAD mode + Advanced mode</h3>
+        <p>Default to TinkerCAD's Group/Hole paradigm for simplicity, with an "Advanced" toggle that exposes Union/Subtract/Intersect explicitly.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px">
+  <h3>2. What snapping/alignment features matter most?</h3>
+  <div class="options" data-multiselect>
+    <div class="option" data-choice="snap-grid" onclick="toggleSelect(this)">
+      <div class="letter">1</div>
+      <div class="content">
+        <h3>Grid Snapping</h3>
+        <p>Objects snap to a configurable grid (1mm, 5mm, 10mm increments)</p>
+      </div>
+    </div>
+    <div class="option" data-choice="snap-face" onclick="toggleSelect(this)">
+      <div class="letter">2</div>
+      <div class="content">
+        <h3>Snap-to-Face / Workplane</h3>
+        <p>Place new objects directly on the surface of existing ones (TinkerCAD's killer feature)</p>
+      </div>
+    </div>
+    <div class="option" data-choice="snap-align" onclick="toggleSelect(this)">
+      <div class="letter">3</div>
+      <div class="content">
+        <h3>Align & Distribute</h3>
+        <p>Select multiple objects → align centers/edges, distribute evenly</p>
+      </div>
+    </div>
+    <div class="option" data-choice="snap-ruler" onclick="toggleSelect(this)">
+      <div class="letter">4</div>
+      <div class="content">
+        <h3>Smart Rulers / Dimension Inputs</h3>
+        <p>See exact distances between objects, type precise dimensions while dragging</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:32px">
+  <h3>3. Priority for first build?</h3>
+  <div class="options">
+    <div class="option" data-choice="priority-booleans" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>Booleans First</h3>
+        <p>Get CSG operations working ASAP, add snapping later</p>
+      </div>
+    </div>
+    <div class="option" data-choice="priority-full" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>Full Package</h3>
+        <p>Build booleans + snapping + alignment together as one feature drop</p>
+      </div>
+    </div>
+  </div>
+</div>

@@ -36,6 +36,7 @@ import {
   Settings2,
   MousePointer,
   Plus,
+  Ruler,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
@@ -102,6 +103,7 @@ export default function GeneratePage() {
   const [snapEnabled, setSnapEnabled] = useState(false);
   const [snapValue] = useState(0.5);
   const [gridVisible, setGridVisible] = useState(true);
+  const [showRulers, setShowRulers] = useState(true);
 
   // ─── UI State ───
   const [rightPanel, setRightPanel] = useState<"chat" | "properties">("properties");
@@ -265,10 +267,21 @@ export default function GeneratePage() {
     }
   }, [chatInput, objects, pushHistory]);
 
-  const handleExportSTL = useCallback(() => {
+  const handleExportSTL = useCallback(async () => {
     if (sceneRef.current) {
-      exportToSTL(sceneRef.current, "spacevision_model.stl");
-      setChatMessages(prev => [...prev, { role: "ai", text: "📥 Exported spacevision_model.stl" }]);
+      try {
+        const { validateAndExportSTL } = await import("@/utils/stlExporter");
+        const result = await validateAndExportSTL(sceneRef.current, "spacevision_model.stl");
+        if (result.warnings.length > 0) {
+          setChatMessages(prev => [...prev, { role: "ai", text: `Exported spacevision_model.stl with warnings:\n${result.warnings.map(w => `- ${w}`).join("\n")}` }]);
+        } else {
+          setChatMessages(prev => [...prev, { role: "ai", text: "Exported spacevision_model.stl (all meshes validated)" }]);
+        }
+      } catch {
+        // Fallback to basic export if dynamic import fails
+        exportToSTL(sceneRef.current, "spacevision_model.stl");
+        setChatMessages(prev => [...prev, { role: "ai", text: "Exported spacevision_model.stl" }]);
+      }
     }
   }, []);
 
@@ -404,6 +417,7 @@ export default function GeneratePage() {
       else if (e.key === "a" && (e.ctrlKey || e.metaKey)) { setSelectedIds(objects.map(o => o.id)); e.preventDefault(); }
       else if (e.key === "x") { setSnapEnabled(prev => !prev); e.preventDefault(); }
       else if (e.key === "w") { setWireframe(prev => !prev); e.preventDefault(); }
+      else if (e.key === "m" || e.key === "M") { setShowRulers(prev => !prev); e.preventDefault(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -489,6 +503,16 @@ export default function GeneratePage() {
           } hover:text-white hover:bg-surface-lighter`}
         >
           <Grid3x3 className="w-3.5 h-3.5" />
+        </button>
+
+        <button
+          onClick={() => setShowRulers(!showRulers)}
+          title={`Smart Rulers (M): ${showRulers ? "ON" : "OFF"}`}
+          className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
+            showRulers ? "bg-blue-500/20 text-blue-400" : "text-gray-500 hover:text-white hover:bg-surface-lighter"
+          }`}
+        >
+          <Ruler className="w-3.5 h-3.5" />
         </button>
 
         <div className="w-5 border-t border-surface-border my-1" />
@@ -687,6 +711,7 @@ export default function GeneratePage() {
                 snapEnabled={snapEnabled}
                 snapValue={snapValue}
                 gridVisible={gridVisible}
+                showRulers={showRulers}
                 onSelect={(id: string) => setSelectedIds([id])}
                 onDeselect={() => setSelectedIds([])}
                 onTransformUpdate={handleTransformUpdate}
@@ -907,6 +932,8 @@ export default function GeneratePage() {
                         <span><kbd className="text-brand">D</kbd> Duplicate</span>
                         <span><kbd className="text-brand">Del</kbd> Delete</span>
                         <span><kbd className="text-brand">X</kbd> Snap</span>
+                        <span><kbd className="text-brand">M</kbd> Rulers</span>
+                        <span><kbd className="text-brand">H</kbd> Hole</span>
                         <span><kbd className="text-brand">Esc</kbd> Deselect</span>
                         <span><kbd className="text-brand">⌘Z</kbd> Undo</span>
                         <span><kbd className="text-brand">⌘Y</kbd> Redo</span>
@@ -955,9 +982,12 @@ export default function GeneratePage() {
         {/* Status bar */}
         <div className="h-5 bg-surface border-t border-surface-border flex items-center px-3 text-[9px] text-gray-600 gap-4 shrink-0">
           <span>Objects: {objects.length}</span>
+          {selectedIds.length > 0 && <span className="text-brand">Selected: {selectedIds.length}</span>}
           <span>Mode: {transformMode}</span>
           {snapEnabled && <span className="text-yellow-500">Snap: {snapValue}</span>}
           {wireframe && <span className="text-blue-400">Wireframe</span>}
+          {showRulers && <span className="text-blue-400">Rulers</span>}
+          {csgGroups.length > 0 && <span>Groups: {csgGroups.length}</span>}
           {selectedObj && <span className="text-brand">{selectedObj.name} ({selectedObj.type})</span>}
           <span className="ml-auto">SpaceVision CAD</span>
         </div>

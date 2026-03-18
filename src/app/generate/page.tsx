@@ -45,9 +45,12 @@ import {
   type HistoryEntry,
   createObject,
   duplicateObject,
+  newId,
   generateFromPrompt,
 } from "@/lib/cadStore";
-import { toggleSelection } from "@/lib/multiSelect";
+import { toggleSelection, canPerformBoolean, getSelectionCenter } from "@/lib/multiSelect";
+import { performGroupCSG } from "@/lib/csgEngine";
+import BooleanToolbar from "@/components/BooleanToolbar";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -275,13 +278,99 @@ export default function GeneratePage() {
     setChatMessages(prev => [...prev, { role: "ai", text: "Scene cleared." }]);
   }, [pushHistory]);
 
+  // ─── Boolean / CSG Handlers ───
+  const handleGroup = useCallback(() => {
+    if (!canPerformBoolean(selectedIds)) return;
+    const selectedObjs = objects.filter(o => selectedIds.includes(o.id));
+    const center = getSelectionCenter(selectedObjs);
+    const groupId = newId();
+    const group: CSGGroup = {
+      id: groupId,
+      name: `Group ${csgGroups.length + 1}`,
+      objectIds: [...selectedIds],
+      operation: 'union',
+      visible: true,
+      locked: false,
+      position: center,
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    };
+    const newObjects = objects.map(o =>
+      selectedIds.includes(o.id) ? { ...o, groupId } : o
+    );
+    setCsgGroups(prev => [...prev, group]);
+    setObjects(newObjects);
+    setSelectedIds([]);
+    pushHistory(newObjects, null);
+  }, [selectedIds, objects, csgGroups.length, pushHistory]);
+
+  const handleUngroup = useCallback((groupId: string) => {
+    const newObjects = objects.map(o =>
+      o.groupId === groupId ? { ...o, groupId: null } : o
+    );
+    setCsgGroups(prev => prev.filter(g => g.id !== groupId));
+    setObjects(newObjects);
+    setSelectedIds([]);
+    pushHistory(newObjects, null);
+  }, [objects, pushHistory]);
+
+  const handleToggleHole = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    const newObjects = objects.map(o =>
+      selectedIds.includes(o.id) ? { ...o, isHole: !o.isHole } : o
+    );
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [selectedIds, objects, selectedId, pushHistory]);
+
+  const handleExplicitBoolean = useCallback((op: 'union' | 'subtract' | 'intersect') => {
+    if (!canPerformBoolean(selectedIds)) return;
+    const selectedObjs = objects.filter(o => selectedIds.includes(o.id));
+    const geometry = performGroupCSG(selectedObjs, 'explicit', op);
+    if (!geometry) return;
+
+    // Use the first selected object's appearance for the result
+    const primary = selectedObjs[0];
+    const center = getSelectionCenter(selectedObjs);
+    const resultObj = createObject(primary.type, {
+      name: `${op.charAt(0).toUpperCase() + op.slice(1)} Result`,
+      position: center,
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      color: primary.color,
+      metalness: primary.metalness,
+      roughness: primary.roughness,
+    });
+
+    const newObjects = [
+      ...objects.filter(o => !selectedIds.includes(o.id)),
+      resultObj,
+    ];
+    setObjects(newObjects);
+    setSelectedIds([resultObj.id]);
+    pushHistory(newObjects, resultObj.id);
+  }, [selectedIds, objects, pushHistory]);
+
+  // Derived boolean state
+  const selectedObjs = useMemo(() => objects.filter(o => selectedIds.includes(o.id)), [objects, selectedIds]);
+  const hasHolesInSelection = useMemo(() => selectedObjs.some(o => o.isHole), [selectedObjs]);
+  const selectedGroupId = useMemo(() => {
+    const groupIds = selectedObjs.map(o => o.groupId).filter(Boolean);
+    if (groupIds.length > 0) return groupIds[0]!;
+    return null;
+  }, [selectedObjs]);
+  const isGroupSelected = selectedGroupId !== null;
+
   // ─── Keyboard Shortcuts ───
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't intercept when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
-      if (e.key === "g" || e.key === "G") { setTransformMode("translate"); e.preventDefault(); }
+      if (e.key === "g" && (e.ctrlKey || e.metaKey) && !e.shiftKey) { handleGroup(); e.preventDefault(); }
+      else if (e.key === "G" && (e.ctrlKey || e.metaKey) && e.shiftKey) { if (selectedGroupId) handleUngroup(selectedGroupId); e.preventDefault(); }
+      else if (e.key === "h" || e.key === "H") { handleToggleHole(); e.preventDefault(); }
+      else if (e.key === "g" || e.key === "G") { setTransformMode("translate"); e.preventDefault(); }
       else if (e.key === "r" && !e.ctrlKey && !e.metaKey) { setTransformMode("rotate"); e.preventDefault(); }
       else if (e.key === "s" && !e.ctrlKey && !e.metaKey) { setTransformMode("scale"); e.preventDefault(); }
       else if (e.key === "Delete" || e.key === "Backspace") { deleteSelected(); e.preventDefault(); }
@@ -295,7 +384,7 @@ export default function GeneratePage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [deleteSelected, duplicateSelected, undo, redo, objects]);
+  }, [deleteSelected, duplicateSelected, undo, redo, objects, handleGroup, handleUngroup, handleToggleHole, selectedGroupId]);
 
   // ─── Primitives ───
   const primitiveTypes: { type: SceneObject["type"]; icon: any; label: string }[] = [
@@ -393,6 +482,31 @@ export default function GeneratePage() {
             <prim.icon className="w-3.5 h-3.5" />
           </button>
         ))}
+
+        <div className="w-5 border-t border-surface-border my-1" />
+
+        {/* Boolean section - compact vertical layout */}
+        <p className="text-[7px] text-gray-600 font-bold tracking-wider">CSG</p>
+        <button
+          onClick={handleGroup}
+          disabled={!canPerformBoolean(selectedIds)}
+          title="Group (Ctrl+G)"
+          className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <Layers className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={handleToggleHole}
+          disabled={selectedIds.length < 1}
+          title="Toggle Hole (H)"
+          className={`w-8 h-8 rounded-md flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+            hasHolesInSelection
+              ? "bg-red-500/20 text-red-400"
+              : "text-gray-500 hover:text-white hover:bg-surface-lighter"
+          }`}
+        >
+          <Circle className="w-3.5 h-3.5" />
+        </button>
 
         <div className="flex-1" />
 
@@ -494,6 +608,21 @@ export default function GeneratePage() {
                   </button>
                 ))}
               </div>
+              {/* Boolean toolbar in outliner panel */}
+              <div className="border-t border-surface-border p-2 shrink-0">
+                <BooleanToolbar
+                  selectedCount={selectedIds.length}
+                  onGroup={handleGroup}
+                  onUngroup={handleUngroup}
+                  onToggleHole={handleToggleHole}
+                  onUnion={() => handleExplicitBoolean('union')}
+                  onSubtract={() => handleExplicitBoolean('subtract')}
+                  onIntersect={() => handleExplicitBoolean('intersect')}
+                  hasHolesInSelection={hasHolesInSelection}
+                  isGroupSelected={isGroupSelected}
+                  selectedGroupId={selectedGroupId}
+                />
+              </div>
             </div>
           )}
 
@@ -521,6 +650,7 @@ export default function GeneratePage() {
               <CADViewport
                 objects={objects}
                 selectedIds={selectedIds}
+                csgGroups={csgGroups}
                 transformMode={transformMode}
                 wireframe={wireframe}
                 snapEnabled={snapEnabled}

@@ -11,7 +11,8 @@ import {
   Environment,
 } from "@react-three/drei";
 import * as THREE from "three";
-import { type SceneObject, buildGeometry } from "@/lib/cadStore";
+import { type SceneObject, type CSGGroup, buildGeometry } from "@/lib/cadStore";
+import { performGroupCSG } from "@/lib/csgEngine";
 
 /* ─── Selectable Mesh ─── */
 function SceneMesh({
@@ -54,15 +55,26 @@ function SceneMesh({
       }}
       userData={{ objId: obj.id }}
     >
-      <meshStandardMaterial
-        color={obj.color}
-        wireframe={wireframe}
-        roughness={obj.roughness}
-        metalness={obj.metalness}
-        flatShading
-        emissive={isSelected ? obj.color : "#000000"}
-        emissiveIntensity={isSelected ? 0.08 : 0}
-      />
+      {obj.isHole ? (
+        <meshStandardMaterial
+          color="#ff4444"
+          wireframe
+          transparent
+          opacity={0.4}
+          roughness={1}
+          metalness={0}
+        />
+      ) : (
+        <meshStandardMaterial
+          color={obj.color}
+          wireframe={wireframe}
+          roughness={obj.roughness}
+          metalness={obj.metalness}
+          flatShading
+          emissive={isSelected ? obj.color : "#000000"}
+          emissiveIntensity={isSelected ? 0.08 : 0}
+        />
+      )}
       {/* Selection outline effect */}
       {isSelected && !wireframe && (
         <mesh scale={[1.02, 1.02, 1.02]}>
@@ -164,6 +176,69 @@ function SceneRef({ onScene }: { onScene: (scene: THREE.Scene) => void }) {
   return null;
 }
 
+/* ─── CSG Group Mesh ─── */
+function CSGGroupMesh({
+  group,
+  allObjects,
+  isSelected,
+  wireframe,
+  onSelect,
+}: {
+  group: CSGGroup;
+  allObjects: SceneObject[];
+  isSelected: boolean;
+  wireframe: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const memberObjects = useMemo(
+    () => allObjects.filter(o => group.objectIds.includes(o.id)),
+    [allObjects, group.objectIds]
+  );
+
+  const resultGeometry = useMemo(() => {
+    if (memberObjects.length < 2) return null;
+    return performGroupCSG(memberObjects, 'tinkercad');
+  }, [memberObjects]);
+
+  // Use the first non-hole object's appearance
+  const primary = useMemo(
+    () => memberObjects.find(o => !o.isHole) || memberObjects[0],
+    [memberObjects]
+  );
+
+  if (!resultGeometry || !primary || !group.visible) return null;
+
+  return (
+    <mesh
+      geometry={resultGeometry}
+      position={group.position}
+      rotation={group.rotation}
+      scale={group.scale}
+      onClick={(e: ThreeEvent<MouseEvent>) => {
+        e.stopPropagation();
+        if (!group.locked) onSelect(group.id);
+      }}
+      userData={{ objId: group.id }}
+    >
+      <meshStandardMaterial
+        color={primary.color}
+        wireframe={wireframe}
+        roughness={primary.roughness}
+        metalness={primary.metalness}
+        flatShading
+        emissive={isSelected ? primary.color : "#000000"}
+        emissiveIntensity={isSelected ? 0.08 : 0}
+      />
+      {isSelected && !wireframe && (
+        <mesh scale={[1.02, 1.02, 1.02]}>
+          <primitive object={resultGeometry.clone()} attach="geometry" />
+          <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.3} />
+        </mesh>
+      )}
+    </mesh>
+  );
+}
+
 /* ─── Background Click Deselect ─── */
 function BackgroundClick({ onDeselect }: { onDeselect: () => void }) {
   const { gl, camera, scene } = useThree();
@@ -200,6 +275,7 @@ function BackgroundClick({ onDeselect }: { onDeselect: () => void }) {
 export default function CADViewport({
   objects,
   selectedIds,
+  csgGroups = [],
   transformMode,
   wireframe,
   snapEnabled,
@@ -213,6 +289,7 @@ export default function CADViewport({
 }: {
   objects: SceneObject[];
   selectedIds: string[];
+  csgGroups?: CSGGroup[];
   transformMode: "translate" | "rotate" | "scale";
   wireframe: boolean;
   snapEnabled: boolean;
@@ -259,8 +336,8 @@ export default function CADViewport({
         <directionalLight position={[-3, 4, -3]} intensity={0.3} color="#bfdbfe" />
         <hemisphereLight color="#e0e7ff" groundColor="#1b1f27" intensity={0.2} />
 
-        {/* Render non-primary objects (including multi-selected ones) */}
-        {objects.filter(o => o.id !== primaryId).map((obj) => (
+        {/* Render non-primary, non-grouped objects */}
+        {objects.filter(o => o.id !== primaryId && !o.groupId).map((obj) => (
           <SceneMesh
             key={obj.id}
             obj={obj}
@@ -274,8 +351,20 @@ export default function CADViewport({
           />
         ))}
 
-        {/* Primary selected object with transform controls */}
-        {selectedObj && !selectedObj.locked && (
+        {/* Render CSG Groups */}
+        {csgGroups.map((group) => (
+          <CSGGroupMesh
+            key={group.id}
+            group={group}
+            allObjects={objects}
+            isSelected={selectedIds.includes(group.id)}
+            wireframe={wireframe}
+            onSelect={onSelect}
+          />
+        ))}
+
+        {/* Primary selected object with transform controls (skip if grouped) */}
+        {selectedObj && !selectedObj.locked && !selectedObj.groupId && (
           <TransformGizmo
             key={selectedObj.id}
             selectedObj={selectedObj}
@@ -287,8 +376,8 @@ export default function CADViewport({
           />
         )}
 
-        {/* Primary selected but locked — render without controls */}
-        {selectedObj && selectedObj.locked && (
+        {/* Primary selected but locked — render without controls (skip if grouped) */}
+        {selectedObj && selectedObj.locked && !selectedObj.groupId && (
           <SceneMesh
             obj={selectedObj}
             isSelected={true}

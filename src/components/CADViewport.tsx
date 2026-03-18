@@ -15,6 +15,8 @@ import { type SceneObject, type CSGGroup, buildGeometry } from "@/lib/cadStore";
 import { performGroupCSG } from "@/lib/csgEngine";
 import { snapToFace, type SnapResult } from "@/lib/snapEngine";
 import SnapIndicator from "./SnapIndicator";
+import SmartRulers from "./SmartRulers";
+import DimensionInput from "./DimensionInput";
 
 /* ─── Selectable Mesh ─── */
 function SceneMesh({
@@ -333,6 +335,7 @@ export default function CADViewport({
   onDeselect,
   onTransformUpdate,
   onSceneReady,
+  showRulers,
   className = "",
 }: {
   objects: SceneObject[];
@@ -347,6 +350,7 @@ export default function CADViewport({
   onDeselect: () => void;
   onTransformUpdate: (id: string, pos: [number, number, number], rot: [number, number, number], scl: [number, number, number]) => void;
   onSceneReady?: (scene: THREE.Scene) => void;
+  showRulers?: boolean;
   className?: string;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -355,6 +359,12 @@ export default function CADViewport({
     position: [number, number, number];
     normal: [number, number, number];
   } | null>(null);
+  const [dimInput, setDimInput] = useState<{
+    visible: boolean;
+    axis: 'x' | 'y' | 'z';
+    position: [number, number, number];
+    value: number;
+  }>({ visible: false, axis: 'x', position: [0, 0, 0], value: 0 });
   useEffect(() => setMounted(true), []);
 
   const handleSnap = useCallback((result: SnapResult | null) => {
@@ -385,6 +395,19 @@ export default function CADViewport({
   const handleScene = useCallback((scene: THREE.Scene) => {
     if (onSceneReady) onSceneReady(scene);
   }, [onSceneReady]);
+
+  const handleDimSubmit = useCallback((value: number) => {
+    if (!primaryId || !selectedObj) return;
+    const pos: [number, number, number] = [...selectedObj.position];
+    const axisIndex = dimInput.axis === 'x' ? 0 : dimInput.axis === 'y' ? 1 : 2;
+    pos[axisIndex] = value;
+    onTransformUpdate(primaryId, pos, selectedObj.rotation, selectedObj.scale);
+    setDimInput(prev => ({ ...prev, visible: false }));
+  }, [primaryId, selectedObj, dimInput.axis, onTransformUpdate]);
+
+  const handleDimCancel = useCallback(() => {
+    setDimInput(prev => ({ ...prev, visible: false }));
+  }, []);
 
   if (!mounted) return <div className={`bg-surface rounded-xl ${className}`} />;
 
@@ -490,6 +513,21 @@ export default function CADViewport({
           position={snapTarget?.position ?? [0, 0, 0]}
           normal={snapTarget?.normal ?? [0, 1, 0]}
           visible={snapEnabled && snapTarget !== null}
+        />
+
+        <SmartRulers
+          objects={objects}
+          selectedIds={selectedIds}
+          visible={showRulers ?? true}
+        />
+
+        <DimensionInput
+          position={dimInput.position}
+          axis={dimInput.axis}
+          currentValue={dimInput.value}
+          onSubmit={handleDimSubmit}
+          onCancel={handleDimCancel}
+          visible={dimInput.visible}
         />
       </Canvas>
     </div>

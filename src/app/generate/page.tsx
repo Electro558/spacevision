@@ -50,7 +50,9 @@ import {
 } from "@/lib/cadStore";
 import { toggleSelection, canPerformBoolean, getSelectionCenter } from "@/lib/multiSelect";
 import { performGroupCSG } from "@/lib/csgEngine";
+import { alignObjects, distributeObjects, type AlignAxis, type AlignMode } from "@/lib/alignEngine";
 import BooleanToolbar from "@/components/BooleanToolbar";
+import AlignToolbar from "@/components/AlignToolbar";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -361,6 +363,27 @@ export default function GeneratePage() {
   }, [selectedObjs]);
   const isGroupSelected = selectedGroupId !== null;
 
+  // ─── Align / Distribute Handlers ───
+  const handleAlign = useCallback((axis: AlignAxis, mode: AlignMode) => {
+    const selected = objects.filter(o => selectedIds.includes(o.id));
+    if (selected.length < 2) return;
+    const aligned = alignObjects(selected, axis, mode);
+    const alignedMap = new Map(aligned.map(o => [o.id, o]));
+    const newObjects = objects.map(o => alignedMap.get(o.id) ?? o);
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedIds, selectedId, pushHistory]);
+
+  const handleDistribute = useCallback((axis: AlignAxis) => {
+    const selected = objects.filter(o => selectedIds.includes(o.id));
+    if (selected.length < 3) return;
+    const distributed = distributeObjects(selected, axis);
+    const distributedMap = new Map(distributed.map(o => [o.id, o]));
+    const newObjects = objects.map(o => distributedMap.get(o.id) ?? o);
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedIds, selectedId, pushHistory]);
+
   // ─── Keyboard Shortcuts ───
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -621,6 +644,14 @@ export default function GeneratePage() {
                   hasHolesInSelection={hasHolesInSelection}
                   isGroupSelected={isGroupSelected}
                   selectedGroupId={selectedGroupId}
+                />
+              </div>
+              {/* Align toolbar in outliner panel */}
+              <div className="border-t border-surface-border p-2 shrink-0">
+                <AlignToolbar
+                  selectedCount={selectedIds.length}
+                  onAlign={handleAlign}
+                  onDistribute={handleDistribute}
                 />
               </div>
             </div>

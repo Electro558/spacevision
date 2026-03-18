@@ -17,6 +17,7 @@ import { type SceneObject, buildGeometry } from "@/lib/cadStore";
 function SceneMesh({
   obj,
   isSelected,
+  isPrimary,
   wireframe,
   onSelect,
   onPositionChange,
@@ -25,6 +26,7 @@ function SceneMesh({
 }: {
   obj: SceneObject;
   isSelected: boolean;
+  isPrimary: boolean;
   wireframe: boolean;
   onSelect: (id: string) => void;
   onPositionChange: (id: string, pos: [number, number, number]) => void;
@@ -33,6 +35,9 @@ function SceneMesh({
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const geometry = useMemo(() => buildGeometry(obj.type), [obj.type]);
+
+  // Primary selection = blue (#3b82f6), multi-selected = cyan (#06b6d4)
+  const outlineColor = isPrimary ? "#3b82f6" : "#06b6d4";
 
   if (!obj.visible) return null;
 
@@ -62,7 +67,7 @@ function SceneMesh({
       {isSelected && !wireframe && (
         <mesh scale={[1.02, 1.02, 1.02]}>
           <primitive object={geometry.clone()} attach="geometry" />
-          <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.3} />
+          <meshBasicMaterial color={outlineColor} wireframe transparent opacity={0.3} />
         </mesh>
       )}
     </mesh>
@@ -194,7 +199,7 @@ function BackgroundClick({ onDeselect }: { onDeselect: () => void }) {
 /* ─── Main CAD Viewport ─── */
 export default function CADViewport({
   objects,
-  selectedId,
+  selectedIds,
   transformMode,
   wireframe,
   snapEnabled,
@@ -207,7 +212,7 @@ export default function CADViewport({
   className = "",
 }: {
   objects: SceneObject[];
-  selectedId: string | null;
+  selectedIds: string[];
   transformMode: "translate" | "rotate" | "scale";
   wireframe: boolean;
   snapEnabled: boolean;
@@ -223,16 +228,18 @@ export default function CADViewport({
   const orbitRef = useRef<any>(null);
   useEffect(() => setMounted(true), []);
 
+  // Primary selection is the LAST item in selectedIds
+  const primaryId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
   const selectedObj = useMemo(
-    () => objects.find((o) => o.id === selectedId) || null,
-    [objects, selectedId]
+    () => objects.find((o) => o.id === primaryId) || null,
+    [objects, primaryId]
   );
 
   const handleTransformUpdate = useCallback(
     (pos: [number, number, number], rot: [number, number, number], scl: [number, number, number]) => {
-      if (selectedId) onTransformUpdate(selectedId, pos, rot, scl);
+      if (primaryId) onTransformUpdate(primaryId, pos, rot, scl);
     },
-    [selectedId, onTransformUpdate]
+    [primaryId, onTransformUpdate]
   );
 
   const handleScene = useCallback((scene: THREE.Scene) => {
@@ -252,12 +259,13 @@ export default function CADViewport({
         <directionalLight position={[-3, 4, -3]} intensity={0.3} color="#bfdbfe" />
         <hemisphereLight color="#e0e7ff" groundColor="#1b1f27" intensity={0.2} />
 
-        {/* Render non-selected objects */}
-        {objects.filter(o => o.id !== selectedId).map((obj) => (
+        {/* Render non-primary objects (including multi-selected ones) */}
+        {objects.filter(o => o.id !== primaryId).map((obj) => (
           <SceneMesh
             key={obj.id}
             obj={obj}
-            isSelected={false}
+            isSelected={selectedIds.includes(obj.id)}
+            isPrimary={false}
             wireframe={wireframe}
             onSelect={onSelect}
             onPositionChange={() => {}}
@@ -266,7 +274,7 @@ export default function CADViewport({
           />
         ))}
 
-        {/* Selected object with transform controls */}
+        {/* Primary selected object with transform controls */}
         {selectedObj && !selectedObj.locked && (
           <TransformGizmo
             key={selectedObj.id}
@@ -279,11 +287,12 @@ export default function CADViewport({
           />
         )}
 
-        {/* Selected but locked — render without controls */}
+        {/* Primary selected but locked — render without controls */}
         {selectedObj && selectedObj.locked && (
           <SceneMesh
             obj={selectedObj}
             isSelected={true}
+            isPrimary={true}
             wireframe={wireframe}
             onSelect={onSelect}
             onPositionChange={() => {}}

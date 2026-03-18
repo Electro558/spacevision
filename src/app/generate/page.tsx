@@ -41,11 +41,13 @@ import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
 import {
   type SceneObject,
+  type CSGGroup,
   type HistoryEntry,
   createObject,
   duplicateObject,
   generateFromPrompt,
 } from "@/lib/cadStore";
+import { toggleSelection } from "@/lib/multiSelect";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -87,7 +89,9 @@ const COLOR_PRESETS = [
 export default function GeneratePage() {
   // ─── Scene State ───
   const [objects, setObjects] = useState<SceneObject[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [csgGroups, setCsgGroups] = useState<CSGGroup[]>([]);
+  const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
   const [transformMode, setTransformMode] = useState<"translate" | "rotate" | "scale">("translate");
   const [wireframe, setWireframe] = useState(false);
   const [snapEnabled, setSnapEnabled] = useState(false);
@@ -131,7 +135,7 @@ export default function GeneratePage() {
     if (historyIndex <= 0) return;
     const entry = history[historyIndex - 1];
     setObjects(entry.objects);
-    setSelectedId(entry.selectedId);
+    setSelectedIds(entry.selectedId ? [entry.selectedId] : []);
     setHistoryIndex(prev => prev - 1);
   }, [history, historyIndex]);
 
@@ -139,7 +143,7 @@ export default function GeneratePage() {
     if (historyIndex >= history.length - 1) return;
     const entry = history[historyIndex + 1];
     setObjects(entry.objects);
-    setSelectedId(entry.selectedId);
+    setSelectedIds(entry.selectedId ? [entry.selectedId] : []);
     setHistoryIndex(prev => prev + 1);
   }, [history, historyIndex]);
 
@@ -147,7 +151,7 @@ export default function GeneratePage() {
   const updateObjects = useCallback((newObjects: SceneObject[], newSelectedId?: string | null) => {
     setObjects(newObjects);
     const sel = newSelectedId !== undefined ? newSelectedId : selectedId;
-    if (newSelectedId !== undefined) setSelectedId(sel);
+    if (newSelectedId !== undefined) setSelectedIds(sel ? [sel] : []);
     pushHistory(newObjects, sel);
   }, [selectedId, pushHistory]);
 
@@ -155,7 +159,7 @@ export default function GeneratePage() {
     const obj = createObject(type);
     const newObjects = [...objects, obj];
     setObjects(newObjects);
-    setSelectedId(obj.id);
+    setSelectedIds([obj.id]);
     pushHistory(newObjects, obj.id);
   }, [objects, pushHistory]);
 
@@ -163,7 +167,7 @@ export default function GeneratePage() {
     if (!selectedId) return;
     const newObjects = objects.filter(o => o.id !== selectedId);
     setObjects(newObjects);
-    setSelectedId(null);
+    setSelectedIds([]);
     pushHistory(newObjects, null);
   }, [objects, selectedId, pushHistory]);
 
@@ -172,7 +176,7 @@ export default function GeneratePage() {
     const dupe = duplicateObject(selectedObj);
     const newObjects = [...objects, dupe];
     setObjects(newObjects);
-    setSelectedId(dupe.id);
+    setSelectedIds([dupe.id]);
     pushHistory(newObjects, dupe.id);
   }, [objects, selectedObj, pushHistory]);
 
@@ -201,7 +205,7 @@ export default function GeneratePage() {
       const newParts = generateFromPrompt(prompt);
       const newObjects = [...objects, ...newParts];
       setObjects(newObjects);
-      setSelectedId(null);
+      setSelectedIds([]);
       pushHistory(newObjects, null);
       setIsGenerating(false);
       setChatMessages(prev => [
@@ -218,7 +222,7 @@ export default function GeneratePage() {
     setTimeout(() => {
       const newParts = generateFromPrompt(p);
       setObjects(newParts);
-      setSelectedId(null);
+      setSelectedIds([]);
       pushHistory(newParts, null);
       setIsGenerating(false);
       setChatMessages(prev => [
@@ -242,7 +246,7 @@ export default function GeneratePage() {
         const newParts = generateFromPrompt(msg);
         const newObjects = [...objects, ...newParts];
         setObjects(newObjects);
-        setSelectedId(null);
+        setSelectedIds([]);
         pushHistory(newObjects, null);
         setChatMessages(prev => [
           ...prev.slice(0, -1),
@@ -265,7 +269,7 @@ export default function GeneratePage() {
 
   const handleClearScene = useCallback(() => {
     setObjects([]);
-    setSelectedId(null);
+    setSelectedIds([]);
     setPrompt("");
     pushHistory([], null);
     setChatMessages(prev => [...prev, { role: "ai", text: "Scene cleared." }]);
@@ -284,13 +288,14 @@ export default function GeneratePage() {
       else if (e.key === "d" || e.key === "D") { duplicateSelected(); e.preventDefault(); }
       else if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) { undo(); e.preventDefault(); }
       else if ((e.key === "y" && (e.ctrlKey || e.metaKey)) || (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey)) { redo(); e.preventDefault(); }
-      else if (e.key === "Escape") { setSelectedId(null); e.preventDefault(); }
+      else if (e.key === "Escape") { setSelectedIds([]); e.preventDefault(); }
+      else if (e.key === "a" && (e.ctrlKey || e.metaKey)) { setSelectedIds(objects.map(o => o.id)); e.preventDefault(); }
       else if (e.key === "x") { setSnapEnabled(prev => !prev); e.preventDefault(); }
       else if (e.key === "w") { setWireframe(prev => !prev); e.preventDefault(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [deleteSelected, duplicateSelected, undo, redo]);
+  }, [deleteSelected, duplicateSelected, undo, redo, objects]);
 
   // ─── Primitives ───
   const primitiveTypes: { type: SceneObject["type"]; icon: any; label: string }[] = [
@@ -310,7 +315,7 @@ export default function GeneratePage() {
       <div className="w-11 bg-surface border-r border-surface-border flex flex-col items-center py-2 gap-0.5 shrink-0">
         {/* Select */}
         <button
-          onClick={() => setSelectedId(null)}
+          onClick={() => setSelectedIds([])}
           title="Select (Esc)"
           className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
             !selectedId ? "text-gray-500" : "text-gray-400 hover:text-white hover:bg-surface-lighter"
@@ -469,9 +474,15 @@ export default function GeneratePage() {
                 {objects.map(obj => (
                   <button
                     key={obj.id}
-                    onClick={() => setSelectedId(obj.id === selectedId ? null : obj.id)}
+                    onClick={(e) => {
+                      if (e.shiftKey) {
+                        setSelectedIds(prev => toggleSelection(prev, obj.id));
+                      } else {
+                        setSelectedIds(prev => prev.length === 1 && prev[0] === obj.id ? [] : [obj.id]);
+                      }
+                    }}
                     className={`w-full flex items-center gap-1.5 px-2 py-1 text-left transition-all ${
-                      obj.id === selectedId
+                      selectedIds.includes(obj.id)
                         ? "bg-brand/15 text-brand"
                         : "text-gray-400 hover:bg-surface-lighter hover:text-white"
                     }`}
@@ -509,14 +520,14 @@ export default function GeneratePage() {
             {objects.length > 0 ? (
               <CADViewport
                 objects={objects}
-                selectedId={selectedId}
+                selectedIds={selectedIds}
                 transformMode={transformMode}
                 wireframe={wireframe}
                 snapEnabled={snapEnabled}
                 snapValue={snapValue}
                 gridVisible={gridVisible}
-                onSelect={setSelectedId}
-                onDeselect={() => setSelectedId(null)}
+                onSelect={(id: string) => setSelectedIds([id])}
+                onDeselect={() => setSelectedIds([])}
                 onTransformUpdate={handleTransformUpdate}
                 onSceneReady={(scene) => { sceneRef.current = scene; }}
                 className="w-full h-full"

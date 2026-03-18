@@ -14,6 +14,20 @@ export interface SceneObject {
   roughness: number;
   visible: boolean;
   locked: boolean;
+  isHole: boolean;
+  groupId: string | null;
+}
+
+export interface CSGGroup {
+  id: string;
+  name: string;
+  objectIds: string[];
+  operation: 'union' | 'subtract' | 'intersect';
+  visible: boolean;
+  locked: boolean;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: [number, number, number];
 }
 
 export interface CADState {
@@ -76,6 +90,8 @@ export function createObject(
     roughness: 0.5,
     visible: true,
     locked: false,
+    isHole: false,
+    groupId: null,
     ...overrides,
   };
 }

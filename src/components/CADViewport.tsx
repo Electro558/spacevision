@@ -13,6 +13,8 @@ import {
 import * as THREE from "three";
 import { type SceneObject, type CSGGroup, buildGeometry } from "@/lib/cadStore";
 import { performGroupCSG } from "@/lib/csgEngine";
+import { snapToFace, type SnapResult } from "@/lib/snapEngine";
+import SnapIndicator from "./SnapIndicator";
 
 /* ─── Selectable Mesh ─── */
 function SceneMesh({
@@ -239,6 +241,52 @@ function CSGGroupMesh({
   );
 }
 
+/* ─── Snap-to-Face Raycaster ─── */
+function SnapRaycaster({
+  enabled,
+  onSnap,
+}: {
+  enabled: boolean;
+  onSnap: (result: SnapResult | null) => void;
+}) {
+  const { scene, camera, gl } = useThree();
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+
+  useEffect(() => {
+    if (!enabled) {
+      onSnap(null);
+      return;
+    }
+
+    const handler = (e: PointerEvent) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+
+      // Collect user meshes with objId
+      const meshes: THREE.Object3D[] = [];
+      const ids: string[] = [];
+      scene.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.userData.objId) {
+          meshes.push(child);
+          ids.push(child.userData.objId);
+        }
+      });
+
+      const result = snapToFace(raycaster, meshes, ids);
+      onSnap(result);
+    };
+
+    gl.domElement.addEventListener("pointermove", handler);
+    return () => gl.domElement.removeEventListener("pointermove", handler);
+  }, [enabled, scene, camera, gl, raycaster, onSnap]);
+
+  return null;
+}
+
 /* ─── Background Click Deselect ─── */
 function BackgroundClick({ onDeselect }: { onDeselect: () => void }) {
   const { gl, camera, scene } = useThree();
@@ -303,7 +351,22 @@ export default function CADViewport({
 }) {
   const [mounted, setMounted] = useState(false);
   const orbitRef = useRef<any>(null);
+  const [snapTarget, setSnapTarget] = useState<{
+    position: [number, number, number];
+    normal: [number, number, number];
+  } | null>(null);
   useEffect(() => setMounted(true), []);
+
+  const handleSnap = useCallback((result: SnapResult | null) => {
+    if (result) {
+      setSnapTarget({
+        position: [result.point.x, result.point.y, result.point.z],
+        normal: [result.normal.x, result.normal.y, result.normal.z],
+      });
+    } else {
+      setSnapTarget(null);
+    }
+  }, []);
 
   // Primary selection is the LAST item in selectedIds
   const primaryId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
@@ -421,6 +484,13 @@ export default function CADViewport({
 
         <BackgroundClick onDeselect={onDeselect} />
         {onSceneReady && <SceneRef onScene={handleScene} />}
+
+        <SnapRaycaster enabled={snapEnabled} onSnap={handleSnap} />
+        <SnapIndicator
+          position={snapTarget?.position ?? [0, 0, 0]}
+          normal={snapTarget?.normal ?? [0, 1, 0]}
+          visible={snapEnabled && snapTarget !== null}
+        />
       </Canvas>
     </div>
   );

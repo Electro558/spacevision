@@ -28,6 +28,7 @@ function SceneMesh({
   onPositionChange,
   onRotationChange,
   onScaleChange,
+  importedGeometries,
 }: {
   obj: SceneObject;
   isSelected: boolean;
@@ -37,9 +38,15 @@ function SceneMesh({
   onPositionChange: (id: string, pos: [number, number, number]) => void;
   onRotationChange: (id: string, rot: [number, number, number]) => void;
   onScaleChange: (id: string, scl: [number, number, number]) => void;
+  importedGeometries?: React.RefObject<Map<string, THREE.BufferGeometry>>;
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
-  const geometry = useMemo(() => buildGeometry(obj.type), [obj.type]);
+  const geometry = useMemo(() => {
+    if (obj.type === 'imported' && importedGeometries?.current?.has(obj.id)) {
+      return importedGeometries.current.get(obj.id)!;
+    }
+    return buildGeometry(obj.type, obj.params);
+  }, [obj.type, obj.id, JSON.stringify(obj.params), importedGeometries]);
 
   // Primary selection = blue (#3b82f6), multi-selected = cyan (#06b6d4)
   const outlineColor = isPrimary ? "#3b82f6" : "#06b6d4";
@@ -98,6 +105,7 @@ function TransformGizmo({
   snapValue,
   onUpdate,
   orbitRef,
+  importedGeometries,
 }: {
   selectedObj: SceneObject;
   mode: "translate" | "rotate" | "scale";
@@ -105,10 +113,16 @@ function TransformGizmo({
   snapValue: number;
   onUpdate: (pos: [number, number, number], rot: [number, number, number], scl: [number, number, number]) => void;
   orbitRef: React.RefObject<any>;
+  importedGeometries?: React.RefObject<Map<string, THREE.BufferGeometry>>;
 }) {
   const transformRef = useRef<any>(null);
   const objRef = useRef<THREE.Mesh>(null!);
-  const geometry = useMemo(() => buildGeometry(selectedObj.type), [selectedObj.type]);
+  const geometry = useMemo(() => {
+    if (selectedObj.type === 'imported' && importedGeometries?.current?.has(selectedObj.id)) {
+      return importedGeometries.current.get(selectedObj.id)!;
+    }
+    return buildGeometry(selectedObj.type, selectedObj.params);
+  }, [selectedObj.type, selectedObj.id, JSON.stringify(selectedObj.params), importedGeometries]);
 
   // Disable orbit controls while dragging transform
   useEffect(() => {
@@ -335,6 +349,7 @@ export default function CADViewport({
   onDeselect,
   onTransformUpdate,
   onSceneReady,
+  importedGeometries,
   showRulers,
   className = "",
 }: {
@@ -350,6 +365,7 @@ export default function CADViewport({
   onDeselect: () => void;
   onTransformUpdate: (id: string, pos: [number, number, number], rot: [number, number, number], scl: [number, number, number]) => void;
   onSceneReady?: (scene: THREE.Scene) => void;
+  importedGeometries?: React.RefObject<Map<string, THREE.BufferGeometry>>;
   showRulers?: boolean;
   className?: string;
 }) {
@@ -434,6 +450,7 @@ export default function CADViewport({
             onPositionChange={() => {}}
             onRotationChange={() => {}}
             onScaleChange={() => {}}
+            importedGeometries={importedGeometries}
           />
         ))}
 
@@ -459,6 +476,7 @@ export default function CADViewport({
             snapValue={snapValue}
             onUpdate={handleTransformUpdate}
             orbitRef={orbitRef}
+            importedGeometries={importedGeometries}
           />
         )}
 
@@ -473,6 +491,7 @@ export default function CADViewport({
             onPositionChange={() => {}}
             onRotationChange={() => {}}
             onScaleChange={() => {}}
+            importedGeometries={importedGeometries}
           />
         )}
 

@@ -15,7 +15,7 @@ export interface DimensionLine {
  * taking into account its geometry, position, rotation, and scale.
  */
 export function getWorldBounds(obj: SceneObject): THREE.Box3 {
-  const geometry = buildGeometry(obj.type)
+  const geometry = buildGeometry(obj.type, obj.params)
   const mesh = new THREE.Mesh(geometry)
   mesh.position.set(...obj.position)
   mesh.rotation.set(...obj.rotation)

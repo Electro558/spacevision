@@ -12,7 +12,7 @@ export type AlignMode = "min" | "center" | "max";
  * applying its position, rotation, and scale transforms.
  */
 export function getObjectBounds(obj: SceneObject): THREE.Box3 {
-  const geometry = buildGeometry(obj.type);
+  const geometry = buildGeometry(obj.type, obj.params);
   geometry.computeBoundingBox();
   const box = geometry.boundingBox!.clone();
 

@@ -44,7 +44,6 @@ import { exportToSTL } from "@/utils/stlExporter";
 import { loadFile, detectFormat } from "@/utils/fileImporter";
 import {
   type SceneObject,
-  type ShapeParams,
   type CSGGroup,
   type HistoryEntry,
   createObject,
@@ -457,6 +456,47 @@ export default function GeneratePage() {
     pushHistory(newObjects, selectedId);
   }, [objects, selectedIds, selectedId, pushHistory]);
 
+  // ─── File Import ───
+  const handleFileImport = useCallback(async (file: File) => {
+    try {
+      const { geometry, name } = await loadFile(file);
+      const objId = newId();
+      importedGeometries.current.set(objId, geometry);
+
+      const newObj = createObject('imported' as SceneObject["type"], {
+        id: objId,
+        name,
+        position: [0, 0, 0],
+      });
+
+      const updated = [...objects, newObj];
+      setObjects(updated);
+      setSelectedIds([objId]);
+      pushHistory(updated, objId);
+
+      setChatMessages(prev => [...prev,
+        { role: "ai", text: `Imported "${name}" successfully.` }
+      ]);
+    } catch (err: any) {
+      setChatMessages(prev => [...prev,
+        { role: "ai", text: `Import failed: ${err.message}` }
+      ]);
+    }
+  }, [objects, pushHistory]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer.files);
+    const modelFile = files.find(f => detectFormat(f.name) !== null);
+    if (modelFile) handleFileImport(modelFile);
+  }, [handleFileImport]);
+
   // ─── Keyboard Shortcuts ───
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -589,6 +629,21 @@ export default function GeneratePage() {
             <prim.icon className="w-3.5 h-3.5" />
           </button>
         ))}
+
+        {/* Import file button */}
+        <label className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter cursor-pointer transition-all" title="Import STL/OBJ/GLTF">
+          <Upload className="w-3.5 h-3.5" />
+          <input
+            type="file"
+            accept=".stl,.obj,.gltf,.glb"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFileImport(file);
+              e.target.value = '';
+            }}
+          />
+        </label>
 
         <div className="w-5 border-t border-surface-border my-1" />
 
@@ -753,7 +808,7 @@ export default function GeneratePage() {
           )}
 
           {/* ─── 3D Viewport ─── */}
-          <div className="flex-1 relative cad-grid">
+          <div className="flex-1 relative cad-grid" onDragOver={handleDragOver} onDrop={handleDrop}>
             {isGenerating && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-surface-dark/70 z-10">
                 <Loader2 className="w-8 h-8 text-brand animate-spin" />
@@ -776,6 +831,7 @@ export default function GeneratePage() {
                 onDeselect={() => setSelectedIds([])}
                 onTransformUpdate={handleTransformUpdate}
                 onSceneReady={(scene) => { sceneRef.current = scene; }}
+                importedGeometries={importedGeometries}
                 className="w-full h-full"
               />
             ) : (
@@ -857,6 +913,54 @@ export default function GeneratePage() {
                       <p className="text-[11px] text-gray-300 mt-1 capitalize">{selectedObj.type}</p>
                     </div>
 
+
+                    {/* Shape Parameters */}
+                    {selectedObj && ['sphere', 'cylinder', 'cone', 'torus'].includes(selectedObj.type) && (
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Shape Parameters</label>
+                        {selectedObj.type === 'sphere' && (
+                          <div className="space-y-1 mt-1">
+                            <NumInput label="R" value={selectedObj.params.radius ?? 0.5} onChange={v => updateParam('radius', Math.max(0.1, v))} step={0.05} color="text-cyan-400" />
+                            <div className="grid grid-cols-2 gap-1">
+                              <NumInput label="WS" value={selectedObj.params.widthSegs ?? 32} onChange={v => updateParam('widthSegs', Math.max(8, Math.min(64, Math.round(v))))} step={1} color="text-cyan-400" />
+                              <NumInput label="HS" value={selectedObj.params.heightSegs ?? 32} onChange={v => updateParam('heightSegs', Math.max(8, Math.min(64, Math.round(v))))} step={1} color="text-cyan-400" />
+                            </div>
+                          </div>
+                        )}
+                        {selectedObj.type === 'cylinder' && (
+                          <div className="space-y-1 mt-1">
+                            <div className="grid grid-cols-2 gap-1">
+                              <NumInput label="RT" value={selectedObj.params.radiusTop ?? 0.5} onChange={v => updateParam('radiusTop', Math.max(0, v))} step={0.05} color="text-cyan-400" />
+                              <NumInput label="RB" value={selectedObj.params.radiusBottom ?? 0.5} onChange={v => updateParam('radiusBottom', Math.max(0, v))} step={0.05} color="text-cyan-400" />
+                            </div>
+                            <NumInput label="Sides" value={selectedObj.params.radialSegments ?? 32} onChange={v => updateParam('radialSegments', Math.max(3, Math.min(64, Math.round(v))))} step={1} color="text-cyan-400" />
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <label className="text-[10px] text-gray-400">Open Ended</label>
+                              <input type="checkbox" checked={selectedObj.params.openEnded ?? false} onChange={e => updateParam('openEnded', e.target.checked)} className="accent-brand" />
+                            </div>
+                          </div>
+                        )}
+                        {selectedObj.type === 'cone' && (
+                          <div className="space-y-1 mt-1">
+                            <NumInput label="R" value={selectedObj.params.coneRadius ?? 0.5} onChange={v => updateParam('coneRadius', Math.max(0.1, v))} step={0.05} color="text-cyan-400" />
+                            <NumInput label="Sides" value={selectedObj.params.coneSegments ?? 32} onChange={v => updateParam('coneSegments', Math.max(3, Math.min(64, Math.round(v))))} step={1} color="text-cyan-400" />
+                          </div>
+                        )}
+                        {selectedObj.type === 'torus' && (
+                          <div className="space-y-1 mt-1">
+                            <div className="grid grid-cols-2 gap-1">
+                              <NumInput label="MR" value={selectedObj.params.torusRadius ?? 0.4} onChange={v => updateParam('torusRadius', Math.max(0.1, v))} step={0.05} color="text-cyan-400" />
+                              <NumInput label="TR" value={selectedObj.params.tubeRadius ?? 0.15} onChange={v => updateParam('tubeRadius', Math.max(0.01, Math.min(0.5, v)))} step={0.01} color="text-cyan-400" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-1">
+                              <NumInput label="RS" value={selectedObj.params.torusRadialSegments ?? 16} onChange={v => updateParam('torusRadialSegments', Math.max(3, Math.min(32, Math.round(v))))} step={1} color="text-cyan-400" />
+                              <NumInput label="TS" value={selectedObj.params.torusTubularSegments ?? 48} onChange={v => updateParam('torusTubularSegments', Math.max(6, Math.min(64, Math.round(v))))} step={1} color="text-cyan-400" />
+                            </div>
+                            <NumInput label="Arc" value={Math.round((selectedObj.params.torusArc ?? Math.PI * 2) * 180 / Math.PI)} onChange={v => updateParam('torusArc', Math.max(0, Math.min(360, v)) * Math.PI / 180)} step={5} color="text-cyan-400" />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {/* Position */}
                     <div>
                       <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Position</label>

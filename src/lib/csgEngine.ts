@@ -11,7 +11,7 @@ const evaluator = new Evaluator()
  * applying position, rotation, and scale as a baked matrix.
  */
 export function objectToBrush(obj: SceneObject): Brush {
-  const geometry = buildGeometry(obj.type)
+  const geometry = buildGeometry(obj.type, obj.params)
   const brush = new Brush(geometry)
 
   // Apply the object's transform to the brush

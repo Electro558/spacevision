@@ -38,6 +38,7 @@ import {
   Plus,
   Ruler,
   Upload,
+  Search as SearchIcon,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
@@ -56,6 +57,7 @@ import { performGroupCSG } from "@/lib/csgEngine";
 import { alignObjects, distributeObjects, type AlignAxis, type AlignMode } from "@/lib/alignEngine";
 import BooleanToolbar from "@/components/BooleanToolbar";
 import AlignToolbar from "@/components/AlignToolbar";
+import SketchfabSearch from "@/components/SketchfabSearch";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -108,7 +110,7 @@ export default function GeneratePage() {
   const [showRulers, setShowRulers] = useState(true);
 
   // ─── UI State ───
-  const [rightPanel, setRightPanel] = useState<"chat" | "properties">("properties");
+  const [rightPanel, setRightPanel] = useState<"chat" | "properties" | "search">("properties");
   const [showOutliner, setShowOutliner] = useState(true);
   const [prompt, setPrompt] = useState("");
   const [chatInput, setChatInput] = useState("");
@@ -723,11 +725,11 @@ export default function GeneratePage() {
             )}
             <div className="w-px h-4 bg-surface-border mx-1" />
             <button
-              onClick={() => setRightPanel(rightPanel === "properties" ? "chat" : "properties")}
-              title={rightPanel === "properties" ? "Switch to Chat" : "Switch to Properties"}
+              onClick={() => setRightPanel(rightPanel === "properties" ? "chat" : rightPanel === "chat" ? "search" : "properties")}
+              title={rightPanel === "properties" ? "Switch to Chat" : rightPanel === "chat" ? "Switch to Search" : "Switch to Properties"}
               className="p-1 rounded text-gray-500 hover:text-white hover:bg-surface-lighter transition-all"
             >
-              {rightPanel === "properties" ? <MessageSquare className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
+              {rightPanel === "properties" ? <MessageSquare className="w-3.5 h-3.5" /> : rightPanel === "chat" ? <SearchIcon className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
@@ -889,9 +891,22 @@ export default function GeneratePage() {
               >
                 AI Chat
               </button>
+              <button
+                onClick={() => setRightPanel("search")}
+                className={`flex-1 text-[10px] font-semibold transition-all ${
+                  rightPanel === "search" ? "text-brand bg-brand/5 border-b border-brand" : "text-gray-500 hover:text-white"
+                }`}
+              >
+                Search
+              </button>
             </div>
 
-            {rightPanel === "properties" ? (
+            {rightPanel === "search" ? (
+              /* ─── Search Panel ─── */
+              <SketchfabSearch onImportUrl={(url, name) => {
+                // Users download from Sketchfab and then drag-drop into the app
+              }} />
+            ) : rightPanel === "properties" ? (
               /* ─── Properties Panel ─── */
               <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
                 {selectedObj ? (

@@ -37,11 +37,14 @@ import {
   MousePointer,
   Plus,
   Ruler,
+  Upload,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
+import { loadFile, detectFormat } from "@/utils/fileImporter";
 import {
   type SceneObject,
+  type ShapeParams,
   type CSGGroup,
   type HistoryEntry,
   createObject,
@@ -121,6 +124,7 @@ export default function GeneratePage() {
   const [historyIndex, setHistoryIndex] = useState(0);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const importedGeometries = useRef<Map<string, THREE.BufferGeometry>>(new Map());
 
   // Derived state
   const selectedObj = useMemo(() => objects.find(o => o.id === selectedId) || null, [objects, selectedId]);
@@ -194,6 +198,17 @@ export default function GeneratePage() {
     pushHistory(newObjects, selectedId);
   }, [objects, selectedId, pushHistory]);
 
+  const updateParam = useCallback((key: string, value: number | boolean) => {
+    if (!selectedId) return;
+    const newObjects = objects.map(o =>
+      o.id === selectedId
+        ? { ...o, params: { ...o.params, [key]: value } }
+        : o
+    );
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedId, pushHistory]);
+
   const handleTransformUpdate = useCallback((id: string, pos: [number, number, number], rot: [number, number, number], scl: [number, number, number]) => {
     const newObjects = objects.map(o =>
       o.id === id ? { ...o, position: pos, rotation: rot, scale: scl } : o
@@ -202,42 +217,83 @@ export default function GeneratePage() {
     pushHistory(newObjects, id);
   }, [objects, pushHistory]);
 
+  // ─── AI Generation Helper ───
+  const generateWithAI = useCallback(async (text: string, existingObjects: SceneObject[]): Promise<SceneObject[]> => {
+    try {
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.objects.map((obj: any) =>
+          createObject(obj.type, {
+            name: obj.name,
+            position: obj.position,
+            rotation: obj.rotation,
+            scale: obj.scale,
+            color: obj.color,
+            metalness: obj.metalness,
+            roughness: obj.roughness,
+          })
+        );
+      }
+    } catch {
+      // Fall through to local fallback
+    }
+    return generateFromPrompt(text);
+  }, []);
+
   // ─── Generation ───
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
     setChatMessages(prev => [...prev, { role: "user", text: prompt }, { role: "ai", text: "Generating..." }]);
 
-    setTimeout(() => {
-      const newParts = generateFromPrompt(prompt);
+    try {
+      const newParts = await generateWithAI(prompt, objects);
       const newObjects = [...objects, ...newParts];
       setObjects(newObjects);
       setSelectedIds([]);
       pushHistory(newObjects, null);
-      setIsGenerating(false);
       setChatMessages(prev => [
         ...prev.slice(0, -1),
-        { role: "ai", text: `✅ Generated ${newParts.length} objects from: "${prompt}"\n\nClick any part to select it. Use Move/Rotate/Scale to edit. Each part is individually editable — full CAD control.` },
+        { role: "ai", text: `Generated ${newParts.length} objects from: "${prompt}"\n\nClick any part to select it. Use Move/Rotate/Scale to edit. Each part is individually editable.` },
       ]);
-    }, 800);
-  }, [prompt, isGenerating, objects, pushHistory]);
+    } catch {
+      setChatMessages(prev => [
+        ...prev.slice(0, -1),
+        { role: "ai", text: "Generation failed. Please try again." },
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [prompt, isGenerating, objects, pushHistory, generateWithAI]);
 
-  const handleIncomingPrompt = useCallback((p: string) => {
+  const handleIncomingPrompt = useCallback(async (p: string) => {
     setPrompt(p);
     setIsGenerating(true);
     setChatMessages(prev => [...prev, { role: "user", text: p }, { role: "ai", text: "Generating..." }]);
-    setTimeout(() => {
-      const newParts = generateFromPrompt(p);
+    try {
+      const newParts = await generateWithAI(p, []);
       setObjects(newParts);
       setSelectedIds([]);
       pushHistory(newParts, null);
-      setIsGenerating(false);
       setChatMessages(prev => [
         ...prev.slice(0, -1),
-        { role: "ai", text: `✅ Generated ${newParts.length} objects from: "${p}"\n\nEach part is selectable. Click to select, then Move/Rotate/Scale to edit.` },
+        { role: "ai", text: `Generated ${newParts.length} objects from: "${p}"\n\nEach part is selectable. Click to select, then Move/Rotate/Scale to edit.` },
       ]);
-    }, 800);
-  }, [pushHistory]);
+    } catch {
+      setChatMessages(prev => [
+        ...prev.slice(0, -1),
+        { role: "ai", text: "Generation failed. Please try again." },
+      ]);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [pushHistory, generateWithAI]);
 
   const handleChatSend = useCallback(() => {
     if (!chatInput.trim()) return;
@@ -249,23 +305,27 @@ export default function GeneratePage() {
     if (/^(make|create|generate|build|model|design|add a|add an)\s/i.test(msg) || (objects.length === 0 && msg.length > 5)) {
       setPrompt(msg);
       setChatMessages(prev => [...prev, { role: "ai", text: "Generating..." }]);
-      setTimeout(() => {
-        const newParts = generateFromPrompt(msg);
+      generateWithAI(msg, objects).then(newParts => {
         const newObjects = [...objects, ...newParts];
         setObjects(newObjects);
         setSelectedIds([]);
         pushHistory(newObjects, null);
         setChatMessages(prev => [
           ...prev.slice(0, -1),
-          { role: "ai", text: `✅ Generated ${newParts.length} objects. Each part is individually selectable and editable.` },
+          { role: "ai", text: `Generated ${newParts.length} objects. Each part is individually selectable and editable.` },
         ]);
-      }, 800);
+      }).catch(() => {
+        setChatMessages(prev => [
+          ...prev.slice(0, -1),
+          { role: "ai", text: "Generation failed. Please try again." },
+        ]);
+      });
     } else {
       setTimeout(() => {
         setChatMessages(prev => [...prev, { role: "ai", text: "Use the prompt bar to generate models, or add primitives from the left toolbar. Select objects to edit their properties in the right panel." }]);
       }, 300);
     }
-  }, [chatInput, objects, pushHistory]);
+  }, [chatInput, objects, pushHistory, generateWithAI]);
 
   const handleExportSTL = useCallback(async () => {
     if (sceneRef.current) {

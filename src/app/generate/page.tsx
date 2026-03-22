@@ -50,14 +50,16 @@ import {
   createObject,
   duplicateObject,
   newId,
-  generateFromPrompt,
+  serializeScene,
 } from "@/lib/cadStore";
 import { toggleSelection, canPerformBoolean, getSelectionCenter } from "@/lib/multiSelect";
 import { performGroupCSG } from "@/lib/csgEngine";
 import { alignObjects, distributeObjects, type AlignAxis, type AlignMode } from "@/lib/alignEngine";
+import { fuzzyFindObject, fuzzyFindObjects } from "@/lib/fuzzyMatch";
 import BooleanToolbar from "@/components/BooleanToolbar";
 import AlignToolbar from "@/components/AlignToolbar";
 import SketchfabSearch from "@/components/SketchfabSearch";
+import ToolCallChip from "@/components/ToolCallChip";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -115,10 +117,22 @@ export default function GeneratePage() {
   const [prompt, setPrompt] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [chatMessages, setChatMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "SpaceVision CAD Workspace ready.\n\nUse the prompt bar to generate models from text, or add primitives from the toolbar. Select objects to move, rotate, and scale them.\n\nKeyboard shortcuts:\nG — Move  |  R — Rotate  |  S — Scale\nDel — Delete  |  D — Duplicate\nCtrl+Z — Undo  |  Ctrl+Y — Redo" },
+  const [chatMessages, setChatMessages] = useState<Array<{
+    role: "user" | "ai";
+    text: string;
+    id?: string;
+    toolCalls?: Array<{ tool: string; input: Record<string, unknown> }>;
+  }>>([
+    { role: "ai", text: "Welcome to SpaceVision! Describe what you want to build or modify. I can see your entire scene and help you create, edit, or rearrange objects.\n\nTry: \"build a house\" or \"make the red cube taller\"" }
   ]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Conversation history in Anthropic API-native format
+  const [conversationHistory, setConversationHistory] = useState<Array<Record<string, unknown>>>([]);
+
+  // Streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // ─── History (Undo/Redo) ───
   const [history, setHistory] = useState<HistoryEntry[]>([{ objects: [], selectedId: null }]);
@@ -129,6 +143,15 @@ export default function GeneratePage() {
 
   // Derived state
   const selectedObj = useMemo(() => objects.find(o => o.id === selectedId) || null, [objects, selectedId]);
+
+  // Cleanup streaming on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -218,115 +241,255 @@ export default function GeneratePage() {
     pushHistory(newObjects, id);
   }, [objects, pushHistory]);
 
-  // ─── AI Generation Helper ───
-  const generateWithAI = useCallback(async (text: string, existingObjects: SceneObject[]): Promise<SceneObject[]> => {
+  // ─── AI Streaming Handler ───
+  const handleAIChat = useCallback(async (userMessage: string) => {
+    if (!userMessage.trim() || isStreaming) return;
+
+    // Abort any existing stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    setIsStreaming(true);
+    setIsGenerating(true);
+
+    // Add user message to chat
+    setChatMessages(prev => [...prev, { role: "user", text: userMessage }]);
+
+    // Add placeholder AI message with stable ID
+    const aiMessageId = `ai-${Date.now()}`;
+    setChatMessages(prev => [...prev, { role: "ai", text: "", toolCalls: [], id: aiMessageId }]);
+
     try {
+      const sceneState = serializeScene(objects);
+
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({
+          prompt: userMessage,
+          conversationHistory,
+          sceneState,
+        }),
+        signal: abortController.signal,
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        return data.objects.map((obj: any) =>
-          createObject(obj.type, {
-            name: obj.name,
-            position: obj.position,
-            rotation: obj.rotation,
-            scale: obj.scale,
-            color: obj.color,
-            metalness: obj.metalness,
-            roughness: obj.roughness,
-          })
-        );
+      if (!response.ok || !response.body) {
+        throw new Error('Stream connection failed');
       }
-    } catch {
-      // Fall through to local fallback
-    }
-    return generateFromPrompt(text);
-  }, []);
 
-  // ─── Generation ───
-  const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || isGenerating) return;
-    setIsGenerating(true);
-    setChatMessages(prev => [...prev, { role: "user", text: prompt }, { role: "ai", text: "Generating..." }]);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let accumulatedText = '';
+      const accumulatedToolCalls: Array<{ tool: string; input: Record<string, unknown> }> = [];
 
-    try {
-      const newParts = await generateWithAI(prompt, objects);
-      const newObjects = [...objects, ...newParts];
-      setObjects(newObjects);
-      setSelectedIds([]);
-      pushHistory(newObjects, null);
-      setChatMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "ai", text: `Generated ${newParts.length} objects from: "${prompt}"\n\nClick any part to select it. Use Move/Rotate/Scale to edit. Each part is individually editable.` },
-      ]);
-    } catch {
-      setChatMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "ai", text: "Generation failed. Please try again." },
-      ]);
+      // Track objects state locally for mutations during stream
+      let currentObjects = [...objects];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+
+            switch (event.type) {
+              case 'text_delta': {
+                accumulatedText += event.text;
+                const textSoFar = accumulatedText;
+                const toolsSoFar = [...accumulatedToolCalls];
+                setChatMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? { ...m, text: textSoFar, toolCalls: toolsSoFar } : m
+                ));
+                break;
+              }
+
+              case 'tool_done': {
+                const { tool, input } = event;
+                accumulatedToolCalls.push({ tool, input });
+
+                // Execute the tool call immediately
+                switch (tool) {
+                  case 'add_object': {
+                    const newObj = createObject(input.type as SceneObject["type"], {
+                      name: input.name as string,
+                      position: (input.position as [number, number, number]) || [0, 0.5, 0],
+                      rotation: (input.rotation as [number, number, number]) || [0, 0, 0],
+                      scale: (input.scale as [number, number, number]) || [1, 1, 1],
+                      color: (input.color as string) || '#6b8caf',
+                      metalness: (input.metalness as number) ?? 0.3,
+                      roughness: (input.roughness as number) ?? 0.5,
+                      params: (input.params as Record<string, unknown>) || {},
+                    });
+                    currentObjects = [...currentObjects, newObj];
+                    setObjects(currentObjects);
+                    break;
+                  }
+
+                  case 'modify_object': {
+                    const target = fuzzyFindObject(currentObjects, input.name as string);
+                    if (target) {
+                      currentObjects = currentObjects.map(obj => {
+                        if (obj.id !== target.id) return obj;
+                        const updates: Partial<SceneObject> = {};
+                        if (input.position) updates.position = input.position as [number, number, number];
+                        if (input.rotation) updates.rotation = input.rotation as [number, number, number];
+                        if (input.scale) updates.scale = input.scale as [number, number, number];
+                        if (input.color) updates.color = input.color as string;
+                        if (input.metalness !== undefined) updates.metalness = input.metalness as number;
+                        if (input.roughness !== undefined) updates.roughness = input.roughness as number;
+                        if (input.new_name) updates.name = input.new_name as string;
+                        if (input.params) updates.params = { ...obj.params, ...(input.params as Record<string, unknown>) };
+                        return { ...obj, ...updates };
+                      });
+                      setObjects(currentObjects);
+                    } else {
+                      accumulatedText += `\n(Could not find object "${input.name}")`;
+                    }
+                    break;
+                  }
+
+                  case 'delete_object': {
+                    const delTarget = fuzzyFindObject(currentObjects, input.name as string);
+                    if (delTarget) {
+                      currentObjects = currentObjects.filter(obj => obj.id !== delTarget.id);
+                      setObjects(currentObjects);
+                    } else {
+                      accumulatedText += `\n(Could not find object "${input.name}" to delete)`;
+                    }
+                    break;
+                  }
+
+                  case 'select_objects': {
+                    const { matched, unmatched } = fuzzyFindObjects(currentObjects, input.names as string[]);
+                    if (matched.length > 0) {
+                      setSelectedIds(matched.map(m => m.id));
+                    }
+                    if (unmatched.length > 0) {
+                      accumulatedText += `\n(Could not find: ${unmatched.join(', ')})`;
+                    }
+                    break;
+                  }
+                }
+
+                // Update chat message with tool calls
+                const textSoFar2 = accumulatedText;
+                const toolsSoFar2 = [...accumulatedToolCalls];
+                setChatMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? { ...m, text: textSoFar2, toolCalls: toolsSoFar2 } : m
+                ));
+                break;
+              }
+
+              case 'error': {
+                accumulatedText += event.error || 'An error occurred';
+                const errText = accumulatedText;
+                setChatMessages(prev => prev.map(m =>
+                  m.id === aiMessageId ? { ...m, text: errText } : m
+                ));
+                break;
+              }
+
+              case 'done': {
+                // Push history for undo/redo
+                pushHistory(currentObjects, selectedIds[0] || null);
+
+                // Update conversation history with tool call context
+                setConversationHistory(prev => {
+                  const updated = [...prev];
+                  updated.push({ role: 'user', content: userMessage });
+
+                  const assistantContent: Array<Record<string, unknown>> = [];
+                  if (accumulatedText) {
+                    assistantContent.push({ type: 'text', text: accumulatedText });
+                  }
+                  for (const tc of accumulatedToolCalls) {
+                    assistantContent.push({
+                      type: 'tool_use',
+                      id: `tool_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                      name: tc.tool,
+                      input: tc.input,
+                    });
+                  }
+                  updated.push({
+                    role: 'assistant',
+                    content: assistantContent.length > 0 ? assistantContent : [{ type: 'text', text: 'Done.' }],
+                  });
+
+                  if (accumulatedToolCalls.length > 0) {
+                    updated.push({
+                      role: 'user',
+                      content: accumulatedToolCalls.map((tc, idx) => ({
+                        type: 'tool_result',
+                        tool_use_id: (assistantContent.find(
+                          (b, i) => b.type === 'tool_use' && b.name === tc.tool && i === (accumulatedText ? idx + 1 : idx)
+                        ) as any)?.id || `tool_${idx}`,
+                        content: JSON.stringify({ success: true }),
+                      })),
+                    });
+                  }
+
+                  return updated.slice(-60);
+                });
+                break;
+              }
+            }
+          } catch (parseErr) {
+            console.warn('Malformed SSE event:', jsonStr);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setChatMessages(prev => prev.map(m =>
+          m.id === aiMessageId ? { ...m, text: m.text + '\n(Generation cancelled)' } : m
+        ));
+      } else {
+        setChatMessages(prev => prev.map(m =>
+          m.id === aiMessageId ? { ...m, text: err.message || 'Generation failed. Please try again.' } : m
+        ));
+      }
     } finally {
+      setIsStreaming(false);
       setIsGenerating(false);
+      abortControllerRef.current = null;
     }
-  }, [prompt, isGenerating, objects, pushHistory, generateWithAI]);
+  }, [isStreaming, objects, conversationHistory, pushHistory, selectedIds]);
 
-  const handleIncomingPrompt = useCallback(async (p: string) => {
-    setPrompt(p);
-    setIsGenerating(true);
-    setChatMessages(prev => [...prev, { role: "user", text: p }, { role: "ai", text: "Generating..." }]);
-    try {
-      const newParts = await generateWithAI(p, []);
-      setObjects(newParts);
-      setSelectedIds([]);
-      pushHistory(newParts, null);
-      setChatMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "ai", text: `Generated ${newParts.length} objects from: "${p}"\n\nEach part is selectable. Click to select, then Move/Rotate/Scale to edit.` },
-      ]);
-    } catch {
-      setChatMessages(prev => [
-        ...prev.slice(0, -1),
-        { role: "ai", text: "Generation failed. Please try again." },
-      ]);
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [pushHistory, generateWithAI]);
-
+  // ─── Chat Send (routes everything through AI) ───
   const handleChatSend = useCallback(() => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || isStreaming) return;
     const msg = chatInput;
     setChatInput("");
-    setChatMessages(prev => [...prev, { role: "user", text: msg }]);
+    handleAIChat(msg);
+  }, [chatInput, isStreaming, handleAIChat]);
 
-    // If it looks like a generation prompt
-    if (/^(make|create|generate|build|model|design|add a|add an)\s/i.test(msg) || (objects.length === 0 && msg.length > 5)) {
-      setPrompt(msg);
-      setChatMessages(prev => [...prev, { role: "ai", text: "Generating..." }]);
-      generateWithAI(msg, objects).then(newParts => {
-        const newObjects = [...objects, ...newParts];
-        setObjects(newObjects);
-        setSelectedIds([]);
-        pushHistory(newObjects, null);
-        setChatMessages(prev => [
-          ...prev.slice(0, -1),
-          { role: "ai", text: `Generated ${newParts.length} objects. Each part is individually selectable and editable.` },
-        ]);
-      }).catch(() => {
-        setChatMessages(prev => [
-          ...prev.slice(0, -1),
-          { role: "ai", text: "Generation failed. Please try again." },
-        ]);
-      });
-    } else {
-      setTimeout(() => {
-        setChatMessages(prev => [...prev, { role: "ai", text: "Use the prompt bar to generate models, or add primitives from the left toolbar. Select objects to edit their properties in the right panel." }]);
-      }, 300);
-    }
-  }, [chatInput, objects, pushHistory, generateWithAI]);
+  // ─── Generation from prompt bar ───
+  const handleGenerate = useCallback(async () => {
+    if (!prompt.trim() || isStreaming) return;
+    const msg = prompt;
+    setPrompt("");
+    handleAIChat(msg);
+  }, [prompt, isStreaming, handleAIChat]);
+
+  // ─── Handle incoming prompt from URL ───
+  const handleIncomingPrompt = useCallback(async (p: string) => {
+    setPrompt(p);
+    handleAIChat(p);
+  }, [handleAIChat]);
 
   const handleExportSTL = useCallback(async () => {
     if (sceneRef.current) {
@@ -515,7 +678,7 @@ export default function GeneratePage() {
       else if (e.key === "d" || e.key === "D") { duplicateSelected(); e.preventDefault(); }
       else if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) { undo(); e.preventDefault(); }
       else if ((e.key === "y" && (e.ctrlKey || e.metaKey)) || (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey)) { redo(); e.preventDefault(); }
-      else if (e.key === "Escape") { setSelectedIds([]); e.preventDefault(); }
+      else if (e.key === "Escape") { if (abortControllerRef.current) { abortControllerRef.current.abort(); } setSelectedIds([]); e.preventDefault(); }
       else if (e.key === "a" && (e.ctrlKey || e.metaKey)) { setSelectedIds(objects.map(o => o.id)); e.preventDefault(); }
       else if (e.key === "x") { setSnapEnabled(prev => !prev); e.preventDefault(); }
       else if (e.key === "w") { setWireframe(prev => !prev); e.preventDefault(); }
@@ -1124,6 +1287,12 @@ export default function GeneratePage() {
             ) : (
               /* ─── Chat Panel ─── */
               <>
+                {/* Scene context badge */}
+                <div className="px-2.5 py-1 border-b border-surface-border text-[9px] text-gray-500 flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${objects.length > 0 ? 'bg-green-500' : 'bg-gray-600'}`} />
+                  AI sees {objects.length} object{objects.length !== 1 ? 's' : ''}
+                  {isStreaming && <Loader2 className="w-2.5 h-2.5 animate-spin ml-auto text-brand" />}
+                </div>
                 <div className="flex-1 overflow-y-auto p-2.5 space-y-2 min-h-0">
                   {chatMessages.map((msg, i) => (
                     <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -1133,6 +1302,16 @@ export default function GeneratePage() {
                           : "bg-surface-lighter text-gray-300 rounded-bl-sm"
                       }`}>
                         {msg.text}
+                        {msg.toolCalls && msg.toolCalls.length > 0 && (
+                          <div className="flex flex-col gap-0.5 mt-1">
+                            {msg.toolCalls.map((tc, j) => (
+                              <ToolCallChip key={j} tool={tc.tool} input={tc.input} />
+                            ))}
+                          </div>
+                        )}
+                        {msg.role === "ai" && i === chatMessages.length - 1 && isStreaming && (
+                          <span className="inline-block w-1.5 h-3 bg-brand animate-pulse ml-0.5 align-middle" />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1145,11 +1324,11 @@ export default function GeneratePage() {
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleChatSend(); }}
-                      placeholder="Describe a model..."
+                      placeholder="Describe what to build or modify..."
                       className="flex-1 px-2.5 py-1.5 rounded bg-surface-lighter border border-surface-border text-[11px] text-white placeholder-gray-500 focus:outline-none focus:border-brand/50"
                     />
-                    <button onClick={handleChatSend} disabled={!chatInput.trim()} className="p-1.5 rounded bg-brand hover:bg-brand-hover disabled:opacity-50 text-white transition-colors">
-                      <Send className="w-3 h-3" />
+                    <button onClick={handleChatSend} disabled={!chatInput.trim() || isStreaming} className="p-1.5 rounded bg-brand hover:bg-brand-hover disabled:opacity-50 text-white transition-colors">
+                      {isStreaming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                     </button>
                   </div>
                 </div>

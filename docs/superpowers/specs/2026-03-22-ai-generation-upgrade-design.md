@@ -21,6 +21,10 @@ Replace both systems with a single **scene-aware Claude assistant** that uses **
 
 ## Architecture
 
+### Model
+
+Use `claude-sonnet-4-20250514` with `max_tokens: 8192` (higher than current 4096 to accommodate multi-tool-call responses with verbose JSON).
+
 ### Tool Schema
 
 Claude receives 4 tools for scene manipulation:
@@ -87,7 +91,26 @@ Change properties of an existing object. Only include properties that are changi
       "metalness": { "type": "number" },
       "roughness": { "type": "number" },
       "new_name": { "type": "string", "description": "Rename the object" },
-      "params": { "type": "object" }
+      "params": {
+        "type": "object",
+        "description": "Shape-specific parametric controls (same schema as add_object params)",
+        "properties": {
+          "radius": { "type": "number" },
+          "widthSegs": { "type": "integer" },
+          "heightSegs": { "type": "integer" },
+          "radiusTop": { "type": "number" },
+          "radiusBottom": { "type": "number" },
+          "radialSegments": { "type": "integer" },
+          "openEnded": { "type": "boolean" },
+          "thetaArc": { "type": "number" },
+          "torusRadius": { "type": "number" },
+          "tubeRadius": { "type": "number" },
+          "torusArc": { "type": "number" },
+          "coneRadius": { "type": "number" },
+          "coneHeight": { "type": "number" },
+          "coneSegments": { "type": "integer" }
+        }
+      }
     },
     "required": ["name"]
   }
@@ -142,6 +165,17 @@ Highlight objects in the viewport so the user sees what the AI is referencing.
   - `done` — stream complete
   - `error` — error occurred
 
+**Tool-result round-trip:** When Claude issues tool calls, the Anthropic API requires `tool_result` messages before Claude can continue. The API route handles this server-side in a loop:
+
+1. Stream Claude's response, forwarding `text_delta` and `tool_use` events as SSE
+2. When `message_stop` fires, check if `stop_reason === "tool_use"`
+3. If so, construct synthetic `tool_result` messages (e.g., `{success: true, id: "generated_id"}`) — the actual scene mutation happens on the client
+4. Call `anthropic.messages.stream()` again with the accumulated messages + tool results
+5. Continue streaming the new response
+6. Repeat until `stop_reason === "end_turn"` or max 5 iterations
+
+This ensures Claude can issue multiple sequential tool calls in a single conversation turn (e.g., building a house with 6+ parts).
+
 #### Frontend Consumer (`generate/page.tsx`)
 
 - Uses `fetch()` with `response.body.getReader()` to consume SSE stream
@@ -151,23 +185,28 @@ Highlight objects in the viewport so the user sees what the AI is referencing.
     - `add_object` → call `createObject()`, append to scene state
     - `modify_object` → fuzzy-match object by name, update changed properties
     - `delete_object` → fuzzy-match object by name, remove from scene
-    - `select_objects` → fuzzy-match names, update `selectedIds`
+    - `select_objects` → fuzzy-match names, update component-level `selectedIds` state (NOT the store's singular `selectedId` — the store tracks undo/redo history with single selection)
   - `done` → finalize message, save to conversation history
+
+**Abort/Cancel:** The frontend uses an `AbortController` passed to `fetch()`. If the user sends a new message while streaming, or presses Escape, the controller aborts the stream. An `isStreaming` guard prevents double-sends.
 
 #### Fuzzy Name Matching
 
 `modify_object` and `delete_object` match by name using:
 1. Exact match (case-insensitive)
 2. Includes match (name contains search term)
-3. Fallback: first object if only one exists
+3. No fallback — if no match is found, show "Couldn't find object named 'X'" in chat and skip the mutation
 
-This lets the user say "make the cube bigger" and Claude says `modify_object({name: "cube"})` — which matches "Red Cube" or "Base Cube".
+This lets the user say "make the cube bigger" and Claude says `modify_object({name: "cube"})` — which matches "Red Cube" or "Base Cube". But saying "delete the window" when no window exists will safely report an error rather than deleting an unrelated object.
 
 ### Conversation Memory
 
-- Store last 10 message exchanges in component state
-- Each exchange = `{ role: "user" | "assistant", content: string, toolCalls?: ToolCall[] }`
-- Sent with every API request so Claude maintains context
+- Store last 20 message exchanges in component state (enough for iterative refinement sessions)
+- Messages stored in **Anthropic API-native format**:
+  - User messages: `{ role: "user", content: string }`
+  - Assistant messages: `{ role: "assistant", content: (TextBlock | ToolUseBlock)[] }`
+  - Tool results: `{ role: "user", content: ToolResultBlock[] }`
+- This avoids format transformation — messages are sent directly to the API
 - Enables iterative refinement: "make it bigger" → "no, the other one" → "perfect, now make it blue"
 
 ### Scene State Serialization
@@ -176,13 +215,20 @@ Before each API call, serialize the current scene:
 
 ```typescript
 function serializeScene(objects: SceneObject[]): string {
-  return objects.map(obj =>
-    `- "${obj.name}" (${obj.type}): pos=[${obj.position}], scale=[${obj.scale}], color=${obj.color}`
-  ).join('\n');
+  return objects.map(obj => {
+    let line = `- "${obj.name}" (${obj.type}): pos=[${obj.position}], rot=[${obj.rotation}], scale=[${obj.scale}], color=${obj.color}, metal=${obj.metalness}, rough=${obj.roughness}`;
+    if (!obj.visible) line += ', HIDDEN';
+    if (obj.locked) line += ', LOCKED';
+    if (obj.isHole) line += ', HOLE';
+    if (obj.type === 'imported') line += ', IMPORTED_MESH';
+    return line;
+  }).join('\n');
 }
 ```
 
-Compact format to minimize tokens. Sent as part of the system prompt context.
+Compact format to minimize tokens. Includes rotation, material properties, visibility/lock state, and imported mesh flag. Sent as part of the system prompt context.
+
+**Imported meshes:** Claude cannot create `imported` type objects (only the file importer can), but imported objects appear in the scene serialization. Claude can modify their position/rotation/scale/color/material but cannot change their geometry. The system prompt instructs Claude about this limitation.
 
 ### System Prompt
 
@@ -192,10 +238,18 @@ You are a 3D modeling assistant for a TinkerCAD-like editor called SpaceVision. 
 Available shape types: box, sphere, cylinder, cone, torus, torusKnot, dodecahedron, octahedron, plane, capsule.
 
 Each shape supports parametric controls:
+- box: widthSegments, heightSegments, depthSegments
 - sphere: radius, widthSegs, heightSegs
 - cylinder: radiusTop, radiusBottom, radialSegments, openEnded, thetaArc
 - cone: coneRadius, coneHeight, coneSegments
 - torus: torusRadius, tubeRadius, torusArc
+- capsule, torusKnot, dodecahedron, octahedron, plane: use scale for sizing
+
+Objects marked IMPORTED_MESH are file imports — you can modify their position, rotation, scale, color, and material, but not their geometry type or params.
+
+Objects marked LOCKED should not be modified unless the user explicitly asks.
+
+Objects marked HIDDEN exist but are not visible — mention them if relevant.
 
 Rules:
 - Use the provided tools to add, modify, delete, or select objects.

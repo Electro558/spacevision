@@ -11,13 +11,14 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         name: { type: 'string', description: 'Descriptive name like "House Wall Left"' },
-        type: { type: 'string', enum: ['box', 'sphere', 'cylinder', 'cone', 'torus', 'torusKnot', 'dodecahedron', 'octahedron', 'plane', 'capsule'] },
+        type: { type: 'string', enum: ['box', 'sphere', 'cylinder', 'cone', 'torus', 'torusKnot', 'dodecahedron', 'octahedron', 'plane', 'capsule', 'wedge', 'tube', 'star'] },
         position: { type: 'array', items: { type: 'number' }, description: '[x, y, z] world position. y=0 is ground.' },
         rotation: { type: 'array', items: { type: 'number' }, description: '[x, y, z] Euler angles in radians' },
         scale: { type: 'array', items: { type: 'number' }, description: '[x, y, z] scale factors' },
         color: { type: 'string', description: 'Hex color e.g. #ff0000' },
         metalness: { type: 'number', description: '0-1 metallic appearance' },
         roughness: { type: 'number', description: '0-1 surface roughness' },
+        opacity: { type: 'number', description: '0-1 transparency. 1=opaque (default), 0=invisible' },
         params: {
           type: 'object',
           description: 'Shape-specific parametric controls',
@@ -36,6 +37,19 @@ const TOOLS: Anthropic.Tool[] = [
             coneRadius: { type: 'number' },
             coneHeight: { type: 'number' },
             coneSegments: { type: 'number' },
+            // Wedge
+            wedgeWidth: { type: 'number' },
+            wedgeHeight: { type: 'number' },
+            wedgeDepth: { type: 'number' },
+            // Tube
+            tubeOuterRadius: { type: 'number' },
+            tubeInnerRadius: { type: 'number' },
+            tubeHeight: { type: 'number' },
+            // Star
+            starPoints: { type: 'number' },
+            starOuterRadius: { type: 'number' },
+            starInnerRadius: { type: 'number' },
+            starDepth: { type: 'number' },
           },
         },
       },
@@ -55,6 +69,7 @@ const TOOLS: Anthropic.Tool[] = [
         color: { type: 'string' },
         metalness: { type: 'number' },
         roughness: { type: 'number' },
+        opacity: { type: 'number', description: '0-1 transparency' },
         new_name: { type: 'string', description: 'Rename the object' },
         params: {
           type: 'object',
@@ -107,7 +122,7 @@ const TOOLS: Anthropic.Tool[] = [
 function buildSystemPrompt(sceneState: string): string {
   return `You are a 3D modeling assistant for a TinkerCAD-like editor called SpaceVision. You help users create and modify 3D scenes using primitive shapes.
 
-Available shape types: box, sphere, cylinder, cone, torus, torusKnot, dodecahedron, octahedron, plane, capsule.
+Available shape types: box, sphere, cylinder, cone, torus, torusKnot, dodecahedron, octahedron, plane, capsule, wedge, tube, star.
 
 Each shape supports parametric controls:
 - box: widthSegments, heightSegments, depthSegments (use scale for sizing)
@@ -115,6 +130,9 @@ Each shape supports parametric controls:
 - cylinder: radiusTop, radiusBottom, radialSegments, openEnded, thetaArc
 - cone: coneRadius, coneHeight, coneSegments
 - torus: torusRadius, tubeRadius, torusArc
+- wedge: wedgeWidth, wedgeHeight, wedgeDepth (triangular prism / ramp)
+- tube: tubeOuterRadius, tubeInnerRadius, tubeHeight (hollow cylinder)
+- star: starPoints, starOuterRadius, starInnerRadius, starDepth (extruded star)
 - capsule, torusKnot, dodecahedron, octahedron, plane: use scale for sizing
 
 Objects marked IMPORTED_MESH are file imports — you can modify their position, rotation, scale, color, and material, but not their geometry type or params.

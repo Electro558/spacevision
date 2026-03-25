@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
 import * as THREE from "three";
 
 interface SnapIndicatorProps {
@@ -15,33 +14,18 @@ export default function SnapIndicator({
   normal,
   visible,
 }: SnapIndicatorProps) {
-  const groupRef = useRef<THREE.Group>(null!);
-  const ringRef = useRef<THREE.Mesh>(null!);
-
-  // Compute quaternion that aligns +Y to the face normal
   const quaternion = useMemo(() => {
     const up = new THREE.Vector3(0, 1, 0);
     const n = new THREE.Vector3(...normal).normalize();
     return new THREE.Quaternion().setFromUnitVectors(up, n);
   }, [normal[0], normal[1], normal[2]]);
 
-  // Animate ring rotation around its local Y axis (the face normal direction)
-  useFrame((_, delta) => {
-    if (ringRef.current && visible) {
-      ringRef.current.rotation.y += delta * 2;
-    }
-  });
-
   if (!visible) return null;
 
   return (
-    <group
-      ref={groupRef}
-      position={position}
-      quaternion={quaternion}
-    >
-      {/* Rotating ring */}
-      <mesh ref={ringRef} renderOrder={999}>
+    <group position={position} quaternion={quaternion}>
+      {/* Static ring */}
+      <mesh renderOrder={999}>
         <ringGeometry args={[0.18, 0.22, 32]} />
         <meshBasicMaterial
           color="#22d3ee"

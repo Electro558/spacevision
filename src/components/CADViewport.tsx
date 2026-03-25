@@ -370,6 +370,7 @@ export default function CADViewport({
   className?: string;
 }) {
   const [mounted, setMounted] = useState(false);
+  const [canvasKey, setCanvasKey] = useState(0);
   const orbitRef = useRef<any>(null);
   const [snapTarget, setSnapTarget] = useState<{
     position: [number, number, number];
@@ -430,8 +431,16 @@ export default function CADViewport({
   return (
     <div className={`canvas-container ${className}`}>
       <Canvas
+        key={canvasKey}
         camera={{ position: [4, 3, 5], fov: 45 }}
         onPointerMissed={() => onDeselect()}
+        onCreated={({ gl }) => {
+          const canvas = gl.domElement;
+          canvas.addEventListener('webglcontextlost', (e: Event) => {
+            e.preventDefault();
+            setTimeout(() => setCanvasKey(k => k + 1), 100);
+          });
+        }}
       >
         <ambientLight intensity={0.45} />
         <directionalLight position={[5, 8, 5]} intensity={1} color="#e0e7ff" castShadow />
@@ -531,7 +540,7 @@ export default function CADViewport({
         <SnapIndicator
           position={snapTarget?.position ?? [0, 0, 0]}
           normal={snapTarget?.normal ?? [0, 1, 0]}
-          visible={snapEnabled && snapTarget !== null}
+          visible={snapEnabled && snapTarget !== null && selectedIds.length > 0}
         />
 
         <SmartRulers

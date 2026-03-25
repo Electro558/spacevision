@@ -21,12 +21,12 @@ Add 10 new primitives to `cadStore.ts`:
 | Shape | Type Key | Geometry Approach | Parametric Controls |
 |---|---|---|---|
 | Rounded Box | `roundedBox` | `THREE.ExtrudeGeometry` from rounded rectangle `THREE.Shape` with `absarc` corners | `cornerRadius`, `rbWidth`, `rbHeight`, `rbDepth` |
-| Text | `text3d` | `THREE.ExtrudeGeometry` from font glyphs via `THREE.FontLoader` + bundled Helvetiker font | `textContent`, `fontSize`, `extrudeDepth`, `bevelEnabled`, `bevelSize` |
-| Half Sphere | `halfSphere` | `THREE.SphereGeometry` with `thetaLength = Math.PI / 2` | `radius`, `widthSegs`, `heightSegs` |
+| Text | `text3d` | `THREE.ExtrudeGeometry` from font glyphs via `FontLoader` from `three-stdlib` + preloaded Helvetiker JSON font (see 1.1a) | `textContent`, `fontSize`, `extrudeDepth`, `bevelEnabled`, `bevelSize` |
+| Half Sphere | `halfSphere` | `THREE.SphereGeometry` with `thetaLength = Math.PI` (180° = hemisphere) | `radius`, `widthSegs`, `heightSegs` |
 | Pyramid | `pyramid` | `THREE.ConeGeometry` with `radialSegments = 4` | `pyramidHeight`, `pyramidBase` |
 | Heart | `heart` | Custom `THREE.Shape` (two arcs + point) extruded | `heartSize`, `heartDepth` |
-| Spring | `spring` | `THREE.TubeGeometry` along parametric helix `THREE.Curve` | `springCoils`, `springRadius`, `wireRadius` |
-| Screw | `screw` | Spring geometry + cylinder shaft merged | `screwLength`, `screwRadius`, `threadPitch` |
+| Spring | `spring` | `THREE.TubeGeometry` along parametric helix `THREE.Curve`, with capped ends via `THREE.CircleGeometry` merged at endpoints. **CSG note:** May produce non-manifold results — mark as CSG-incompatible, skip in boolean operations. | `springCoils`, `springRadius`, `wireRadius` |
+| Screw | `screw` | `THREE.LatheGeometry` with a threaded profile (sawtooth wave revolve around axis) — produces a single manifold mesh unlike the merged spring+shaft approach. | `screwLength`, `screwRadius`, `threadPitch` |
 | Roof | `roof` | `THREE.ExtrudeGeometry` from equilateral triangle | `roofWidth`, `roofHeight`, `roofDepth` |
 | Arrow | `arrow` | `THREE.ExtrudeGeometry` from arrow-shaped `THREE.Shape` (shaft + head) | `arrowLength`, `arrowHeadSize`, `arrowDepth` |
 | Ring (thin torus) | `ring` | `THREE.TorusGeometry` with thin tubeRadius | `ringRadius`, `ringThickness` |
@@ -38,6 +38,16 @@ Add 10 new primitives to `cadStore.ts`:
 **buildGeometry switch:** 10 new cases with full parametric geometry construction.
 
 **createObject names map:** 10 new entries.
+
+#### 1.1a Text3D Font Loading Architecture
+
+`buildGeometry` is currently synchronous, but font loading is async. Solution:
+
+- **Preload font at module level** in a new `src/lib/fontManager.ts`: load Helvetiker JSON font (from `three-stdlib/fonts/helvetiker_regular.typeface.json`) once at import time. Export `getFont(): Font | null`.
+- **`buildGeometry` for `text3d`:** If font is loaded, generate `TextGeometry` (from `three-stdlib`). If font not yet loaded, return a placeholder `BoxGeometry` — the `SceneMesh` component will re-render when font loads via a `useSyncExternalStore` subscription.
+- **Font singleton:** Single `Font` instance cached after first load. No repeated network requests.
+
+This keeps `buildGeometry` synchronous while handling the async font load gracefully.
 
 ### 1.2 Shape Drawer Panel
 
@@ -61,9 +71,10 @@ Replace the small icon toolbar section ("ADD" with 7 buttons) with a collapsible
 │ [Text][Spring]      │
 │ [Screw][Heart]      │
 │─────────────────────│
-│ ▼ Holes             │
-│ [□][○][⬡] (hole)   │
-│ Pre-toggled isHole  │
+│ [Solid ◉ | ○ Hole]  │
+│ Toggle at top of    │
+│ drawer — next shape │
+│ placed as hole      │
 └─────────────────────┘
 ```
 
@@ -71,7 +82,7 @@ Replace the small icon toolbar section ("ADD" with 7 buttons) with a collapsible
 - **Basic:** box, sphere, cylinder, cone, wedge, tube, star, torus, torusKnot, dodecahedron, octahedron, plane, capsule
 - **Extended:** roundedBox, halfSphere, pyramid, roof, ring, arrow
 - **Text & Mechanical:** text3d, spring, screw, heart
-- **Holes:** Duplicates of common shapes but pre-set with `isHole: true` (TinkerCAD's hole shapes panel)
+- **Hole toggle:** A "Solid / Hole" toggle at the top of the drawer. When "Hole" is active, the next shape placed is automatically `isHole: true`. This avoids duplicating every shape as a separate hole variant (TinkerCAD uses a similar tab-based approach).
 
 **Implementation:** New `ShapeDrawer.tsx` component. Each shape tile shows a small SVG icon and label. Click = add at smart position. Drag = drag-to-place (see 1.3).
 
@@ -97,8 +108,9 @@ Replace the small icon toolbar section ("ADD" with 7 buttons) with a collapsible
 
 Update `route.ts` tool definitions:
 - Add all 10 new type keys to `add_object` enum
-- Add new parametric properties to `params`
+- Add new parametric properties to `params` in both `add_object` AND `modify_object` tools (keep them in sync)
 - Update `buildSystemPrompt` with new shape descriptions
+- Add `materialPreset` and `texture` to both tool schemas (for Cycle 2 — add the fields now, AI will use them when materials are implemented)
 
 ---
 
@@ -161,11 +173,12 @@ interface MaterialPreset {
 - Add a "Smoothness" slider to the properties panel (visible for all shapes)
 - Maps to segment count: Low (8 segments) → Medium (32) → High (64) → Ultra (128)
 - Stored as `smoothness?: number` (0-3 integer) on SceneObject
-- Applied in `buildGeometry` by multiplying base segment counts
+- **Precedence:** Smoothness is a convenience control. When set, it overrides the equivalent explicit segment params (`widthSegs`, `heightSegs`, `radialSegments`, etc.) in `buildGeometry`. If the user then manually adjusts an explicit param via the advanced controls, `smoothness` resets to `undefined` (custom). This avoids ambiguity — smoothness is a preset, explicit params are manual override.
+- Applied in `buildGeometry` by computing segment count from smoothness level and using it as the default for any segment param that isn't explicitly set.
 
 **Sides control (for cylinder, cone, tube):**
 - "Sides" slider: 3 (triangle) → 4 (square) → 5 (pentagon) → 6 (hexagon) → ... → 32 (circle)
-- Replaces `radialSegments` param with a more intuitive UI
+- This is a UI alias for `radialSegments` — setting sides writes directly to the `radialSegments` param
 - Shows the polygon name (Triangle, Square, Pentagon, Hexagon, Circle)
 
 ### 2.4 Dimension Handles
@@ -200,6 +213,8 @@ interface MaterialPreset {
 
 **Reset:** "Reset Workplane" button returns to ground plane.
 
+**Integration with addPrimitive:** When a workplane is active, the smart placement grid in `addPrimitive` projects the grid layout onto the workplane (using workplane origin + normal + up vectors to compute placement positions). Drag-to-place (from Cycle 1) also raycasts against the active workplane instead of the hardcoded ground plane.
+
 ### 3.2 Flatten to Ground
 
 - Keyboard shortcut: **F**
@@ -214,6 +229,7 @@ interface MaterialPreset {
 - **Ctrl+V:** Deserialize from clipboard, assign new IDs, offset position by [0.5, 0, 0.5], add to scene
 - **Ctrl+X:** Copy + delete selected
 - Clipboard stored in `useRef` (component-level, not system clipboard)
+- **Focus gating:** All keyboard shortcuts (Ctrl+C/V/X, Shift+X/Y/Z for flip, F for flatten) are only active when `document.activeElement` is NOT an input/textarea element. This prevents conflicts with text editing in the chat panel, rename fields, or dimension inputs. The existing keyboard handler in `page.tsx` already has this pattern — apply it to all new shortcuts.
 
 ### 3.4 Mirror/Flip
 
@@ -243,8 +259,8 @@ interface MaterialPreset {
 │ 👁 🔒 📦 House Roof  │
 │ 👁 🔓 ⭕ Window (hole)│
 │ ▼ Group "House"     │
-│   👁 📦 Wall Left    │
-│   👁 📦 Wall Right   │
+│   📦 Wall Left       │
+│   📦 Wall Right      │
 │ 👁 🔓 📦 Tree Trunk  │
 └─────────────────────┘
 ```
@@ -253,7 +269,7 @@ interface MaterialPreset {
 - Click row to select object
 - Eye icon toggles visibility
 - Lock icon toggles locked state
-- Groups shown as expandable tree nodes
+- Groups shown as expandable tree nodes (flat — no nested groups, matches existing `CSGGroup.objectIds` flat array)
 - Drag rows to reorder (optional, nice-to-have)
 - Right-click context menu: Rename, Duplicate, Delete, Toggle Hole, Flatten
 
@@ -273,10 +289,8 @@ Replace current red wireframe with TinkerCAD-style hole rendering:
 TinkerCAD's core operation: select objects → click "Group" → all solids union, all holes subtract.
 
 **Implementation:**
-- New function `smartGroup(objects: SceneObject[]): CSGGroup`
-- Separates objects into holes (`isHole === true`) and solids
-- Creates a CSG group with operation: first union all solids, then subtract all holes
-- This is the DEFAULT group behavior. Current manual union/subtract/intersect kept as "Advanced" options.
+- The existing `performGroupCSG` in `csgEngine.ts` already supports a `mode: 'tinkercad'` that unions solids and subtracts holes. The work here is **UX-level**: make this the default when pressing Ctrl+G (instead of prompting for operation type), and add "Advanced → Union / Subtract / Intersect" as secondary options in a dropdown or right-click menu.
+- Current manual union/subtract/intersect kept as "Advanced" options.
 
 ### 4.3 Boolean Preview
 
@@ -379,6 +393,7 @@ Before committing a group:
 | `src/components/BooleanPreview.tsx` | CSG preview overlay |
 | `src/components/AlignmentGuides.tsx` | Figma-style alignment guide lines |
 | `src/components/MarqueeSelect.tsx` | Box selection overlay |
+| `src/lib/fontManager.ts` | Font preloading singleton for text3d shapes |
 | `src/lib/materialPresets.ts` | Material preset definitions and helpers |
 | `src/lib/textureManager.ts` | Texture loading and caching |
 | `src/lib/workplane.ts` | Workplane math (raycast to plane, project point) |

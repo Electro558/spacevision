@@ -31,12 +31,25 @@ export interface ShapeParams {
   torusRadialSegments?: number;
   torusTubularSegments?: number;
   torusArc?: number;
+  // Wedge
+  wedgeWidth?: number;
+  wedgeHeight?: number;
+  wedgeDepth?: number;
+  // Tube
+  tubeOuterRadius?: number;
+  tubeInnerRadius?: number;
+  tubeHeight?: number;
+  // Star
+  starPoints?: number;
+  starOuterRadius?: number;
+  starInnerRadius?: number;
+  starDepth?: number;
 }
 
 export interface SceneObject {
   id: string;
   name: string;
-  type: "box" | "sphere" | "cylinder" | "cone" | "torus" | "torusKnot" | "dodecahedron" | "octahedron" | "plane" | "capsule" | "imported";
+  type: "box" | "sphere" | "cylinder" | "cone" | "torus" | "torusKnot" | "dodecahedron" | "octahedron" | "plane" | "capsule" | "imported" | "wedge" | "tube" | "star";
   importedGeometry?: any; // THREE.BufferGeometry serialized data for imported meshes
   position: [number, number, number];
   rotation: [number, number, number];
@@ -44,6 +57,7 @@ export interface SceneObject {
   color: string;
   metalness: number;
   roughness: number;
+  opacity?: number;
   visible: boolean;
   locked: boolean;
   isHole: boolean;
@@ -83,6 +97,16 @@ export function newId(): string {
   return `obj_${Date.now()}_${_idCounter++}`;
 }
 
+const PALETTE = [
+  "#6b8caf", "#e06c75", "#98c379", "#e5c07b", "#61afef",
+  "#c678dd", "#56b6c2", "#d19a66", "#be5046", "#7ec8e3",
+  "#f5a623", "#50c878", "#ff6b6b", "#4ecdc4", "#45b7d1",
+];
+
+export function randomColor(): string {
+  return PALETTE[Math.floor(Math.random() * PALETTE.length)];
+}
+
 export const DEFAULT_STATE: CADState = {
   objects: [],
   selectedId: null,
@@ -109,6 +133,9 @@ export function createObject(
     plane: "Plane",
     capsule: "Capsule",
     imported: "Imported Model",
+    wedge: "Wedge",
+    tube: "Tube",
+    star: "Star",
   };
 
   // Count existing objects of same type for naming
@@ -119,9 +146,10 @@ export function createObject(
     position: [0, 0.5, 0],
     rotation: [0, 0, 0],
     scale: [1, 1, 1],
-    color: "#6b8caf",
+    color: randomColor(),
     metalness: 0.3,
     roughness: 0.5,
+    opacity: 1,
     visible: true,
     locked: false,
     isHole: false,
@@ -132,11 +160,12 @@ export function createObject(
 }
 
 export function duplicateObject(obj: SceneObject): SceneObject {
+  const offsetX = Math.max(obj.scale[0], 0.5) * 1.2;
   return {
     ...obj,
     id: newId(),
     name: `${obj.name} Copy`,
-    position: [obj.position[0] + 0.5, obj.position[1], obj.position[2] + 0.5],
+    position: [obj.position[0] + offsetX, obj.position[1], obj.position[2]],
   };
 }
 
@@ -154,6 +183,48 @@ export function buildGeometry(type: SceneObject["type"], params: ShapeParams = {
     case "plane": return new THREE.PlaneGeometry(1, 1);
     case "capsule": return new THREE.CapsuleGeometry(0.3, 0.5, 8, 16);
     case "imported": return new THREE.BoxGeometry(1, 1, 1); // Placeholder; actual geometry handled in viewport
+    case "wedge": {
+      const w = params.wedgeWidth || 1;
+      const h = params.wedgeHeight || 1;
+      const d = params.wedgeDepth || 1;
+      const shape = new THREE.Shape();
+      shape.moveTo(-w / 2, -h / 2);
+      shape.lineTo(w / 2, -h / 2);
+      shape.lineTo(-w / 2, h / 2);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+      geo.translate(0, 0, -d / 2); // Center along Z
+      return geo;
+    }
+    case "tube": {
+      const outer = params.tubeOuterRadius || 0.5;
+      const inner = params.tubeInnerRadius || 0.35;
+      const h = params.tubeHeight || 1;
+      const points = [
+        new THREE.Vector2(inner, -h / 2),
+        new THREE.Vector2(outer, -h / 2),
+        new THREE.Vector2(outer, h / 2),
+        new THREE.Vector2(inner, h / 2),
+      ];
+      return new THREE.LatheGeometry(points, 32);
+    }
+    case "star": {
+      const pts = params.starPoints || 5;
+      const outerR = params.starOuterRadius || 0.5;
+      const innerR = params.starInnerRadius || 0.25;
+      const depth = params.starDepth || 0.3;
+      const shape = new THREE.Shape();
+      for (let i = 0; i < pts * 2; i++) {
+        const angle = (i * Math.PI) / pts - Math.PI / 2;
+        const r = i % 2 === 0 ? outerR : innerR;
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r;
+        if (i === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      return new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    }
     default: return new THREE.BoxGeometry(1, 1, 1);
   }
 }
@@ -166,6 +237,7 @@ export function serializeScene(objects: SceneObject[]): string {
     if (obj.locked) line += ', LOCKED';
     if (obj.isHole) line += ', HOLE';
     if (obj.type === 'imported') line += ', IMPORTED_MESH';
+    if (obj.opacity != null && obj.opacity < 1) line += `, opacity=${obj.opacity}`;
     return line;
   }).join('\n');
 }

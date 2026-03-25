@@ -71,7 +71,7 @@ function SceneMesh({
           color="#ff4444"
           wireframe
           transparent
-          opacity={0.4}
+          opacity={0.55}
           roughness={1}
           metalness={0}
         />
@@ -81,6 +81,8 @@ function SceneMesh({
           wireframe={wireframe}
           roughness={obj.roughness}
           metalness={obj.metalness}
+          transparent={(obj.opacity ?? 1) < 1}
+          opacity={obj.opacity ?? 1}
           flatShading
           emissive={isSelected ? obj.color : "#000000"}
           emissiveIntensity={isSelected ? 0.08 : 0}
@@ -178,6 +180,8 @@ function TransformGizmo({
           color={selectedObj.color}
           roughness={selectedObj.roughness}
           metalness={selectedObj.metalness}
+          transparent={(selectedObj.opacity ?? 1) < 1}
+          opacity={selectedObj.opacity ?? 1}
           flatShading
           emissive={selectedObj.color}
           emissiveIntensity={0.08}

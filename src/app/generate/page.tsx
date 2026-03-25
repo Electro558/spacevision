@@ -39,6 +39,8 @@ import {
   Ruler,
   Upload,
   Search as SearchIcon,
+  Star,
+  Hexagon,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
@@ -191,7 +193,10 @@ export default function GeneratePage() {
   }, [selectedId, pushHistory]);
 
   const addPrimitive = useCallback((type: SceneObject["type"]) => {
-    const obj = createObject(type);
+    const count = objects.filter(o => o.visible && !o.groupId).length;
+    const x = (count % 5) * 1.5 - 3;
+    const z = Math.floor(count / 5) * 1.5;
+    const obj = createObject(type, { position: [x, 0.5, z] });
     const newObjects = [...objects, obj];
     setObjects(newObjects);
     setSelectedIds([obj.id]);
@@ -694,6 +699,9 @@ export default function GeneratePage() {
     { type: "sphere", icon: Circle, label: "Sphere" },
     { type: "cylinder", icon: Cylinder, label: "Cylinder" },
     { type: "cone", icon: Triangle, label: "Cone" },
+    { type: "wedge", icon: Triangle, label: "Wedge" },
+    { type: "tube", icon: Hexagon, label: "Tube" },
+    { type: "star", icon: Star, label: "Star" },
   ];
 
   return (
@@ -1222,6 +1230,16 @@ export default function GeneratePage() {
                           type="range" min="0" max="1" step="0.05"
                           value={selectedObj.roughness}
                           onChange={(e) => updateSelectedProp("roughness", parseFloat(e.target.value))}
+                          className="w-full h-1 accent-brand"
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] text-gray-400">Opacity</span>
+                          <span className="text-[10px] text-gray-500 font-mono">{(selectedObj.opacity ?? 1).toFixed(2)}</span>
+                        </div>
+                        <input
+                          type="range" min="0" max="1" step="0.05"
+                          value={selectedObj.opacity ?? 1}
+                          onChange={(e) => updateSelectedProp("opacity", parseFloat(e.target.value))}
                           className="w-full h-1 accent-brand"
                         />
                       </div>

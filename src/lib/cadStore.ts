@@ -44,12 +44,50 @@ export interface ShapeParams {
   starOuterRadius?: number;
   starInnerRadius?: number;
   starDepth?: number;
+  // Rounded Box
+  cornerRadius?: number;
+  rbWidth?: number;
+  rbHeight?: number;
+  rbDepth?: number;
+  // Text3D
+  textContent?: string;
+  fontSize?: number;
+  extrudeDepth?: number;
+  bevelEnabled?: boolean;
+  bevelSize?: number;
+  // Half Sphere
+  halfSphereRadius?: number;
+  // Pyramid
+  pyramidHeight?: number;
+  pyramidBase?: number;
+  // Heart
+  heartSize?: number;
+  heartDepth?: number;
+  // Spring
+  springCoils?: number;
+  springRadius?: number;
+  wireRadius?: number;
+  // Screw
+  screwLength?: number;
+  screwRadius?: number;
+  threadPitch?: number;
+  // Roof
+  roofWidth?: number;
+  roofHeight?: number;
+  roofDepth?: number;
+  // Arrow
+  arrowLength?: number;
+  arrowHeadSize?: number;
+  arrowDepth?: number;
+  // Ring
+  ringRadius?: number;
+  ringThickness?: number;
 }
 
 export interface SceneObject {
   id: string;
   name: string;
-  type: "box" | "sphere" | "cylinder" | "cone" | "torus" | "torusKnot" | "dodecahedron" | "octahedron" | "plane" | "capsule" | "imported" | "wedge" | "tube" | "star";
+  type: "box" | "sphere" | "cylinder" | "cone" | "torus" | "torusKnot" | "dodecahedron" | "octahedron" | "plane" | "capsule" | "imported" | "wedge" | "tube" | "star" | "roundedBox" | "text3d" | "halfSphere" | "pyramid" | "heart" | "spring" | "screw" | "roof" | "arrow" | "ring";
   importedGeometry?: any; // THREE.BufferGeometry serialized data for imported meshes
   position: [number, number, number];
   rotation: [number, number, number];
@@ -136,6 +174,16 @@ export function createObject(
     wedge: "Wedge",
     tube: "Tube",
     star: "Star",
+    roundedBox: "Rounded Box",
+    text3d: "Text",
+    halfSphere: "Half Sphere",
+    pyramid: "Pyramid",
+    heart: "Heart",
+    spring: "Spring",
+    screw: "Screw",
+    roof: "Roof",
+    arrow: "Arrow",
+    ring: "Ring",
   };
 
   // Count existing objects of same type for naming
@@ -224,6 +272,151 @@ export function buildGeometry(type: SceneObject["type"], params: ShapeParams = {
       }
       shape.closePath();
       return new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+    }
+    case "roundedBox": {
+      const w = params.rbWidth || 1;
+      const h = params.rbHeight || 1;
+      const d = params.rbDepth || 1;
+      const r = Math.min(params.cornerRadius || 0.1, Math.min(w, h) / 2 - 0.01);
+      const shape = new THREE.Shape();
+      shape.moveTo(-w / 2 + r, -h / 2);
+      shape.lineTo(w / 2 - r, -h / 2);
+      shape.absarc(w / 2 - r, -h / 2 + r, r, -Math.PI / 2, 0, false);
+      shape.lineTo(w / 2, h / 2 - r);
+      shape.absarc(w / 2 - r, h / 2 - r, r, 0, Math.PI / 2, false);
+      shape.lineTo(-w / 2 + r, h / 2);
+      shape.absarc(-w / 2 + r, h / 2 - r, r, Math.PI / 2, Math.PI, false);
+      shape.lineTo(-w / 2, -h / 2 + r);
+      shape.absarc(-w / 2 + r, -h / 2 + r, r, Math.PI, Math.PI * 1.5, false);
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled: false });
+      geo.translate(0, 0, -d / 2);
+      return geo;
+    }
+    case "text3d": {
+      const { getFont } = require('@/lib/fontManager');
+      const font = getFont();
+      if (!font) {
+        return new THREE.BoxGeometry(1, 0.3, 0.1);
+      }
+      const { TextGeometry } = require('three-stdlib');
+      const text = params.textContent || 'Text';
+      const geo = new TextGeometry(text, {
+        font,
+        size: params.fontSize || 0.5,
+        depth: params.extrudeDepth || 0.2,
+        bevelEnabled: params.bevelEnabled ?? false,
+        bevelSize: params.bevelSize || 0.02,
+        bevelThickness: 0.01,
+        curveSegments: 12,
+      });
+      geo.computeBoundingBox();
+      if (geo.boundingBox) {
+        const cx = -(geo.boundingBox.max.x + geo.boundingBox.min.x) / 2;
+        const cy = -(geo.boundingBox.max.y + geo.boundingBox.min.y) / 2;
+        const cz = -(geo.boundingBox.max.z + geo.boundingBox.min.z) / 2;
+        geo.translate(cx, cy, cz);
+      }
+      return geo;
+    }
+    case "halfSphere": {
+      return new THREE.SphereGeometry(
+        params.halfSphereRadius || 0.5,
+        params.widthSegs || 32,
+        params.heightSegs || 16,
+        0, Math.PI * 2,
+        0, Math.PI / 2
+      );
+    }
+    case "pyramid": {
+      return new THREE.ConeGeometry(
+        params.pyramidBase || 0.5,
+        params.pyramidHeight || 1,
+        4, 1, false, Math.PI / 4
+      );
+    }
+    case "heart": {
+      const s = params.heartSize || 0.5;
+      const shape = new THREE.Shape();
+      shape.moveTo(0, s * 0.4);
+      shape.bezierCurveTo(0, s * 0.7, -s, s * 0.9, -s, s * 0.4);
+      shape.bezierCurveTo(-s, -s * 0.2, 0, -s * 0.5, 0, -s * 0.8);
+      shape.bezierCurveTo(0, -s * 0.5, s, -s * 0.2, s, s * 0.4);
+      shape.bezierCurveTo(s, s * 0.9, 0, s * 0.7, 0, s * 0.4);
+      const geo = new THREE.ExtrudeGeometry(shape, {
+        depth: params.heartDepth || 0.3,
+        bevelEnabled: false,
+      });
+      geo.translate(0, 0, -(params.heartDepth || 0.3) / 2);
+      return geo;
+    }
+    case "spring": {
+      const coils = params.springCoils || 5;
+      const sRadius = params.springRadius || 0.4;
+      const wRadius = params.wireRadius || 0.05;
+      class HelixCurve extends THREE.Curve<THREE.Vector3> {
+        constructor() { super(); }
+        getPoint(t: number): THREE.Vector3 {
+          const angle = t * Math.PI * 2 * coils;
+          return new THREE.Vector3(
+            Math.cos(angle) * sRadius,
+            t * coils * wRadius * 8,
+            Math.sin(angle) * sRadius
+          );
+        }
+      }
+      return new THREE.TubeGeometry(new HelixCurve(), coils * 32, wRadius, 8, false);
+    }
+    case "screw": {
+      const len = params.screwLength || 1;
+      const sRad = params.screwRadius || 0.1;
+      const pitch = params.threadPitch || 0.15;
+      const steps = Math.floor(len / pitch);
+      const points: THREE.Vector2[] = [];
+      for (let i = 0; i <= steps * 8; i++) {
+        const t = i / (steps * 8);
+        const y = t * len - len / 2;
+        const phase = (t * steps * Math.PI * 2) % (Math.PI * 2);
+        const threadR = sRad + Math.max(0, Math.sin(phase)) * sRad * 0.4;
+        points.push(new THREE.Vector2(threadR, y));
+      }
+      return new THREE.LatheGeometry(points, 24);
+    }
+    case "roof": {
+      const rw = params.roofWidth || 1;
+      const rh = params.roofHeight || 0.7;
+      const rd = params.roofDepth || 1;
+      const shape = new THREE.Shape();
+      shape.moveTo(-rw / 2, 0);
+      shape.lineTo(rw / 2, 0);
+      shape.lineTo(0, rh);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: rd, bevelEnabled: false });
+      geo.translate(0, 0, -rd / 2);
+      return geo;
+    }
+    case "arrow": {
+      const aLen = params.arrowLength || 1;
+      const headSize = params.arrowHeadSize || 0.3;
+      const depth = params.arrowDepth || 0.15;
+      const shaftW = headSize * 0.4;
+      const shaftLen = aLen - headSize;
+      const shape = new THREE.Shape();
+      shape.moveTo(-shaftW / 2, -aLen / 2);
+      shape.lineTo(shaftW / 2, -aLen / 2);
+      shape.lineTo(shaftW / 2, -aLen / 2 + shaftLen);
+      shape.lineTo(headSize / 2, -aLen / 2 + shaftLen);
+      shape.lineTo(0, aLen / 2);
+      shape.lineTo(-headSize / 2, -aLen / 2 + shaftLen);
+      shape.lineTo(-shaftW / 2, -aLen / 2 + shaftLen);
+      shape.closePath();
+      const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+      geo.translate(0, 0, -depth / 2);
+      return geo;
+    }
+    case "ring": {
+      const ringR = params.ringRadius || 0.4;
+      const ringT = params.ringThickness || 0.06;
+      return new THREE.TorusGeometry(ringR, ringT, 16, 48);
     }
     default: return new THREE.BoxGeometry(1, 1, 1);
   }

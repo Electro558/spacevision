@@ -339,6 +339,42 @@ function BackgroundClick({ onDeselect }: { onDeselect: () => void }) {
   return null;
 }
 
+/* ─── Drag Ghost ─── */
+function DragGhost({ type, onDrop }: { type: string; onDrop: (pos: [number, number, number]) => void }) {
+  const meshRef = useRef<THREE.Mesh>(null!);
+  const [position, setPosition] = useState<[number, number, number]>([0, 0.5, 0]);
+  const [visible, setVisible] = useState(false);
+  const groundPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const geometry = useMemo(() => buildGeometry(type as any), [type]);
+
+  useFrame(({ raycaster, pointer, camera }) => {
+    raycaster.setFromCamera(pointer, camera);
+    const hit = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(groundPlane, hit)) {
+      const x = Math.round(hit.x * 2) / 2;
+      const z = Math.round(hit.z * 2) / 2;
+      setPosition([x, 0.5, z]);
+      setVisible(true);
+    }
+  });
+
+  useEffect(() => {
+    const handleUp = () => {
+      if (visible) onDrop(position);
+    };
+    window.addEventListener('pointerup', handleUp);
+    return () => window.removeEventListener('pointerup', handleUp);
+  }, [visible, position, onDrop]);
+
+  if (!visible) return null;
+
+  return (
+    <mesh ref={meshRef} geometry={geometry} position={position}>
+      <meshStandardMaterial color="#61afef" transparent opacity={0.4} />
+    </mesh>
+  );
+}
+
 /* ─── Main CAD Viewport ─── */
 export default function CADViewport({
   objects,
@@ -356,6 +392,8 @@ export default function CADViewport({
   importedGeometries,
   showRulers,
   className = "",
+  draggingShape,
+  onDropShape,
 }: {
   objects: SceneObject[];
   selectedIds: string[];
@@ -372,6 +410,8 @@ export default function CADViewport({
   importedGeometries?: React.RefObject<Map<string, THREE.BufferGeometry>>;
   showRulers?: boolean;
   className?: string;
+  draggingShape?: { type: string; asHole: boolean } | null;
+  onDropShape?: (type: string, position: [number, number, number], asHole: boolean) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   const [canvasKey, setCanvasKey] = useState(0);
@@ -546,6 +586,13 @@ export default function CADViewport({
           normal={snapTarget?.normal ?? [0, 1, 0]}
           visible={snapEnabled && snapTarget !== null && selectedIds.length > 0}
         />
+
+        {draggingShape && (
+          <DragGhost
+            type={draggingShape.type}
+            onDrop={(pos) => onDropShape?.(draggingShape.type, pos, draggingShape.asHole)}
+          />
+        )}
 
         <SmartRulers
           objects={objects}

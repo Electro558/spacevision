@@ -678,6 +678,7 @@ export default function GeneratePage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setDraggingShape(null);
     const files = Array.from(e.dataTransfer.files);
     const modelFile = files.find(f => detectFormat(f.name) !== null);
     if (modelFile) handleFileImport(modelFile);
@@ -1020,6 +1021,15 @@ export default function GeneratePage() {
                   onSceneReady={(scene) => { sceneRef.current = scene; }}
                   importedGeometries={importedGeometries}
                   className="w-full h-full"
+                  draggingShape={draggingShape}
+                  onDropShape={(type, position, asHole) => {
+                    const obj = createObject(type as SceneObject["type"], { position, isHole: asHole });
+                    const newObjects = [...objects, obj];
+                    setObjects(newObjects);
+                    setSelectedIds([obj.id]);
+                    pushHistory(newObjects, obj.id);
+                    setDraggingShape(null);
+                  }}
                 />
                 <ShapeDrawer
                   onAddShape={addFromDrawer}

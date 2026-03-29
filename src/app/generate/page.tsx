@@ -62,6 +62,7 @@ import BooleanToolbar from "@/components/BooleanToolbar";
 import AlignToolbar from "@/components/AlignToolbar";
 import SketchfabSearch from "@/components/SketchfabSearch";
 import ToolCallChip from "@/components/ToolCallChip";
+import ShapeDrawer from "@/components/ShapeDrawer";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -112,6 +113,7 @@ export default function GeneratePage() {
   const [snapValue] = useState(0.5);
   const [gridVisible, setGridVisible] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
+  const [draggingShape, setDraggingShape] = useState<{ type: SceneObject["type"]; asHole: boolean } | null>(null);
 
   // ─── UI State ───
   const [rightPanel, setRightPanel] = useState<"chat" | "properties" | "search">("properties");
@@ -197,6 +199,20 @@ export default function GeneratePage() {
     const x = (count % 5) * 1.5 - 3;
     const z = Math.floor(count / 5) * 1.5;
     const obj = createObject(type, { position: [x, 0.5, z] });
+    const newObjects = [...objects, obj];
+    setObjects(newObjects);
+    setSelectedIds([obj.id]);
+    pushHistory(newObjects, obj.id);
+  }, [objects, pushHistory]);
+
+  const addFromDrawer = useCallback((type: SceneObject["type"], asHole?: boolean) => {
+    const count = objects.filter(o => o.visible && !o.groupId).length;
+    const x = (count % 5) * 1.5 - 3;
+    const z = Math.floor(count / 5) * 1.5;
+    const obj = createObject(type, {
+      position: [x, 0.5, z],
+      isHole: asHole || false,
+    });
     const newObjects = [...objects, obj];
     setObjects(newObjects);
     setSelectedIds([obj.id]);
@@ -790,18 +806,15 @@ export default function GeneratePage() {
 
         <div className="w-5 border-t border-surface-border my-1" />
 
-        {/* Primitives */}
+        {/* Quick add (full shape panel is the ShapeDrawer) */}
         <p className="text-[7px] text-gray-600 font-bold tracking-wider">ADD</p>
-        {primitiveTypes.map(prim => (
-          <button
-            key={prim.type}
-            onClick={() => addPrimitive(prim.type)}
-            title={`Add ${prim.label}`}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter transition-all"
-          >
-            <prim.icon className="w-3.5 h-3.5" />
-          </button>
-        ))}
+        <button
+          onClick={() => addPrimitive("box")}
+          title="Quick Add Cube"
+          className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter transition-all"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
 
         {/* Import file button */}
         <label className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter cursor-pointer transition-all" title="Import STL/OBJ/GLTF">
@@ -990,23 +1003,29 @@ export default function GeneratePage() {
             )}
 
             {objects.length > 0 ? (
-              <CADViewport
-                objects={objects}
-                selectedIds={selectedIds}
-                csgGroups={csgGroups}
-                transformMode={transformMode}
-                wireframe={wireframe}
-                snapEnabled={snapEnabled}
-                snapValue={snapValue}
-                gridVisible={gridVisible}
-                showRulers={showRulers}
-                onSelect={(id: string) => setSelectedIds([id])}
-                onDeselect={() => setSelectedIds([])}
-                onTransformUpdate={handleTransformUpdate}
-                onSceneReady={(scene) => { sceneRef.current = scene; }}
-                importedGeometries={importedGeometries}
-                className="w-full h-full"
-              />
+              <>
+                <CADViewport
+                  objects={objects}
+                  selectedIds={selectedIds}
+                  csgGroups={csgGroups}
+                  transformMode={transformMode}
+                  wireframe={wireframe}
+                  snapEnabled={snapEnabled}
+                  snapValue={snapValue}
+                  gridVisible={gridVisible}
+                  showRulers={showRulers}
+                  onSelect={(id: string) => setSelectedIds([id])}
+                  onDeselect={() => setSelectedIds([])}
+                  onTransformUpdate={handleTransformUpdate}
+                  onSceneReady={(scene) => { sceneRef.current = scene; }}
+                  importedGeometries={importedGeometries}
+                  className="w-full h-full"
+                />
+                <ShapeDrawer
+                  onAddShape={addFromDrawer}
+                  onDragStart={(type, asHole) => setDraggingShape({ type, asHole })}
+                />
+              </>
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-surface-lighter/30 border border-surface-border flex items-center justify-center">

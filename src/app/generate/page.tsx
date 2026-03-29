@@ -1031,10 +1031,6 @@ export default function GeneratePage() {
                     setDraggingShape(null);
                   }}
                 />
-                <ShapeDrawer
-                  onAddShape={addFromDrawer}
-                  onDragStart={(type, asHole) => setDraggingShape({ type, asHole })}
-                />
               </>
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
@@ -1047,6 +1043,11 @@ export default function GeneratePage() {
                 </div>
               </div>
             )}
+
+            <ShapeDrawer
+              onAddShape={addFromDrawer}
+              onDragStart={(type, asHole) => setDraggingShape({ type, asHole })}
+            />
 
             {/* Bottom prompt bar */}
             <div className="absolute bottom-0 left-0 right-0 p-2.5 z-20">

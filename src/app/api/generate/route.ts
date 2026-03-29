@@ -11,7 +11,7 @@ const TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         name: { type: 'string', description: 'Descriptive name like "House Wall Left"' },
-        type: { type: 'string', enum: ['box', 'sphere', 'cylinder', 'cone', 'torus', 'torusKnot', 'dodecahedron', 'octahedron', 'plane', 'capsule', 'wedge', 'tube', 'star'] },
+        type: { type: 'string', enum: ['box', 'sphere', 'cylinder', 'cone', 'torus', 'torusKnot', 'dodecahedron', 'octahedron', 'plane', 'capsule', 'wedge', 'tube', 'star', 'roundedBox', 'text3d', 'halfSphere', 'pyramid', 'heart', 'spring', 'screw', 'roof', 'arrow', 'ring'] },
         position: { type: 'array', items: { type: 'number' }, description: '[x, y, z] world position. y=0 is ground.' },
         rotation: { type: 'array', items: { type: 'number' }, description: '[x, y, z] Euler angles in radians' },
         scale: { type: 'array', items: { type: 'number' }, description: '[x, y, z] scale factors' },
@@ -50,6 +50,42 @@ const TOOLS: Anthropic.Tool[] = [
             starOuterRadius: { type: 'number' },
             starInnerRadius: { type: 'number' },
             starDepth: { type: 'number' },
+            // Rounded Box
+            cornerRadius: { type: 'number' },
+            rbWidth: { type: 'number' },
+            rbHeight: { type: 'number' },
+            rbDepth: { type: 'number' },
+            // Text3D
+            textContent: { type: 'string' },
+            fontSize: { type: 'number' },
+            extrudeDepth: { type: 'number' },
+            bevelEnabled: { type: 'boolean' },
+            bevelSize: { type: 'number' },
+            // Pyramid
+            pyramidHeight: { type: 'number' },
+            pyramidBase: { type: 'number' },
+            // Heart
+            heartSize: { type: 'number' },
+            heartDepth: { type: 'number' },
+            // Spring
+            springCoils: { type: 'number' },
+            springRadius: { type: 'number' },
+            wireRadius: { type: 'number' },
+            // Screw
+            screwLength: { type: 'number' },
+            screwRadius: { type: 'number' },
+            threadPitch: { type: 'number' },
+            // Roof
+            roofWidth: { type: 'number' },
+            roofHeight: { type: 'number' },
+            roofDepth: { type: 'number' },
+            // Arrow
+            arrowLength: { type: 'number' },
+            arrowHeadSize: { type: 'number' },
+            arrowDepth: { type: 'number' },
+            // Ring
+            ringRadius: { type: 'number' },
+            ringThickness: { type: 'number' },
           },
         },
       },
@@ -89,6 +125,55 @@ const TOOLS: Anthropic.Tool[] = [
             coneRadius: { type: 'number' },
             coneHeight: { type: 'number' },
             coneSegments: { type: 'number' },
+            // Wedge
+            wedgeWidth: { type: 'number' },
+            wedgeHeight: { type: 'number' },
+            wedgeDepth: { type: 'number' },
+            // Tube
+            tubeOuterRadius: { type: 'number' },
+            tubeInnerRadius: { type: 'number' },
+            tubeHeight: { type: 'number' },
+            // Star
+            starPoints: { type: 'number' },
+            starOuterRadius: { type: 'number' },
+            starInnerRadius: { type: 'number' },
+            starDepth: { type: 'number' },
+            // Rounded Box
+            cornerRadius: { type: 'number' },
+            rbWidth: { type: 'number' },
+            rbHeight: { type: 'number' },
+            rbDepth: { type: 'number' },
+            // Text3D
+            textContent: { type: 'string' },
+            fontSize: { type: 'number' },
+            extrudeDepth: { type: 'number' },
+            bevelEnabled: { type: 'boolean' },
+            bevelSize: { type: 'number' },
+            // Pyramid
+            pyramidHeight: { type: 'number' },
+            pyramidBase: { type: 'number' },
+            // Heart
+            heartSize: { type: 'number' },
+            heartDepth: { type: 'number' },
+            // Spring
+            springCoils: { type: 'number' },
+            springRadius: { type: 'number' },
+            wireRadius: { type: 'number' },
+            // Screw
+            screwLength: { type: 'number' },
+            screwRadius: { type: 'number' },
+            threadPitch: { type: 'number' },
+            // Roof
+            roofWidth: { type: 'number' },
+            roofHeight: { type: 'number' },
+            roofDepth: { type: 'number' },
+            // Arrow
+            arrowLength: { type: 'number' },
+            arrowHeadSize: { type: 'number' },
+            arrowDepth: { type: 'number' },
+            // Ring
+            ringRadius: { type: 'number' },
+            ringThickness: { type: 'number' },
           },
         },
       },
@@ -122,7 +207,7 @@ const TOOLS: Anthropic.Tool[] = [
 function buildSystemPrompt(sceneState: string): string {
   return `You are a 3D modeling assistant for a TinkerCAD-like editor called SpaceVision. You help users create and modify 3D scenes using primitive shapes.
 
-Available shape types: box, sphere, cylinder, cone, torus, torusKnot, dodecahedron, octahedron, plane, capsule, wedge, tube, star.
+Available shape types: box, sphere, cylinder, cone, torus, torusKnot, dodecahedron, octahedron, plane, capsule, wedge, tube, star, roundedBox, text3d, halfSphere, pyramid, heart, spring, screw, roof, arrow, ring.
 
 Each shape supports parametric controls:
 - box: widthSegments, heightSegments, depthSegments (use scale for sizing)
@@ -133,6 +218,16 @@ Each shape supports parametric controls:
 - wedge: wedgeWidth, wedgeHeight, wedgeDepth (triangular prism / ramp)
 - tube: tubeOuterRadius, tubeInnerRadius, tubeHeight (hollow cylinder)
 - star: starPoints, starOuterRadius, starInnerRadius, starDepth (extruded star)
+- roundedBox: cornerRadius, rbWidth, rbHeight, rbDepth (box with rounded corners)
+- text3d: textContent (the text string), fontSize, extrudeDepth, bevelEnabled, bevelSize
+- halfSphere: halfSphereRadius (dome/hemisphere)
+- pyramid: pyramidHeight, pyramidBase (4-sided pyramid)
+- heart: heartSize, heartDepth (heart shape)
+- spring: springCoils, springRadius, wireRadius (helix coil)
+- screw: screwLength, screwRadius, threadPitch (threaded rod)
+- roof: roofWidth, roofHeight, roofDepth (triangular prism)
+- arrow: arrowLength, arrowHeadSize, arrowDepth (3D arrow)
+- ring: ringRadius, ringThickness (thin torus ring)
 - capsule, torusKnot, dodecahedron, octahedron, plane: use scale for sizing
 
 Objects marked IMPORTED_MESH are file imports — you can modify their position, rotation, scale, color, and material, but not their geometry type or params.

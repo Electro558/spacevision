@@ -25,7 +25,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --legacy-peer-deps
 
       # Remove API routes — they need a server and can't be statically exported
       - run: rm -rf src/app/api

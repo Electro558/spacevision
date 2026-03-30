@@ -203,7 +203,7 @@ export default function GeneratePage() {
 
   const addPrimitive = useCallback((type: SceneObject["type"]) => {
     const count = objects.filter(o => o.visible && !o.groupId).length;
-    const x = (count % 5) * 1.5 - 3;
+    const x = (count % 5) * 1.5;
     const z = Math.floor(count / 5) * 1.5;
     const obj = createObject(type, { position: [x, 0.5, z] });
     const newObjects = [...objects, obj];
@@ -214,7 +214,7 @@ export default function GeneratePage() {
 
   const addFromDrawer = useCallback((type: SceneObject["type"], asHole?: boolean) => {
     const count = objects.filter(o => o.visible && !o.groupId).length;
-    const x = (count % 5) * 1.5 - 3;
+    const x = (count % 5) * 1.5;
     const z = Math.floor(count / 5) * 1.5;
     const obj = createObject(type, {
       position: [x, 0.5, z],

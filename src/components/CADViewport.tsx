@@ -482,7 +482,8 @@ export default function CADViewport({
 
   // ─── Marquee Select Handlers ───
   const handleMarqueeDown = useCallback((e: React.PointerEvent) => {
-    if (e.button !== 0 || !onMarqueeSelect) return;
+    // Only start marquee on Shift+click to avoid fighting with OrbitControls/TransformControls
+    if (e.button !== 0 || !onMarqueeSelect || !e.shiftKey) return;
     const rect = canvasContainerRef.current?.getBoundingClientRect();
     if (!rect) return;
     marqueeStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };

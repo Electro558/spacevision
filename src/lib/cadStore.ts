@@ -96,6 +96,9 @@ export interface SceneObject {
   metalness: number;
   roughness: number;
   opacity?: number;
+  materialPreset?: string;  // "wood", "metal", "glass", etc.
+  texture?: string;         // texture key or "none"
+  smoothness?: number;      // 0-3 (Low, Medium, High, Ultra)
   visible: boolean;
   locked: boolean;
   isHole: boolean;
@@ -217,13 +220,24 @@ export function duplicateObject(obj: SceneObject): SceneObject {
   };
 }
 
+/* Smoothness level → segment count */
+const SMOOTHNESS_SEGMENTS = [8, 32, 64, 128];
+
+function smoothSegs(smoothness: number | undefined, explicit: number | undefined, fallback: number): number {
+  if (explicit !== undefined) return explicit;
+  if (smoothness !== undefined && smoothness >= 0 && smoothness <= 3) return SMOOTHNESS_SEGMENTS[smoothness];
+  return fallback;
+}
+
 /* Build geometry from type */
-export function buildGeometry(type: SceneObject["type"], params: ShapeParams = {}): THREE.BufferGeometry {
+export function buildGeometry(type: SceneObject["type"], params: ShapeParams = {}, smoothness?: number): THREE.BufferGeometry {
+  const ss = (explicit: number | undefined, fallback: number) => smoothSegs(smoothness, explicit, fallback);
+
   switch (type) {
     case "box": return new THREE.BoxGeometry(1, 1, 1, params.widthSegments || 1, params.heightSegments || 1, params.depthSegments || 1);
-    case "sphere": return new THREE.SphereGeometry(params.radius || 0.5, params.widthSegs || 32, params.heightSegs || 32, 0, params.phiLength || Math.PI * 2, 0, params.thetaLength || Math.PI);
-    case "cylinder": return new THREE.CylinderGeometry(params.radiusTop ?? 0.5, params.radiusBottom ?? 0.5, params.height || 1, params.radialSegments || 32, 1, params.openEnded || false, params.thetaStart || 0, params.thetaArc || Math.PI * 2);
-    case "cone": return new THREE.ConeGeometry(params.coneRadius || 0.5, params.coneHeight || 1, params.coneSegments || 32, 1, false, 0, params.thetaArc || Math.PI * 2);
+    case "sphere": return new THREE.SphereGeometry(params.radius || 0.5, ss(params.widthSegs, 32), ss(params.heightSegs, 32), 0, params.phiLength || Math.PI * 2, 0, params.thetaLength || Math.PI);
+    case "cylinder": return new THREE.CylinderGeometry(params.radiusTop ?? 0.5, params.radiusBottom ?? 0.5, params.height || 1, ss(params.radialSegments, 32), 1, params.openEnded || false, params.thetaStart || 0, params.thetaArc || Math.PI * 2);
+    case "cone": return new THREE.ConeGeometry(params.coneRadius || 0.5, params.coneHeight || 1, ss(params.coneSegments, 32), 1, false, 0, params.thetaArc || Math.PI * 2);
     case "torus": return new THREE.TorusGeometry(params.torusRadius || 0.4, params.tubeRadius || 0.15, params.torusRadialSegments || 16, params.torusTubularSegments || 48, params.torusArc || Math.PI * 2);
     case "torusKnot": return new THREE.TorusKnotGeometry(0.4, 0.12, 128, 32);
     case "dodecahedron": return new THREE.DodecahedronGeometry(0.5, 0);

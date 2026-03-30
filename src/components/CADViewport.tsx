@@ -17,6 +17,8 @@ import { snapToFace, type SnapResult } from "@/lib/snapEngine";
 import SnapIndicator from "./SnapIndicator";
 import SmartRulers from "./SmartRulers";
 import DimensionInput from "./DimensionInput";
+import { getTexture } from "@/lib/textureManager";
+import DimensionHandles from "./DimensionHandles";
 
 /* ─── Selectable Mesh ─── */
 function SceneMesh({
@@ -45,8 +47,8 @@ function SceneMesh({
     if (obj.type === 'imported' && importedGeometries?.current?.has(obj.id)) {
       return importedGeometries.current.get(obj.id)!;
     }
-    return buildGeometry(obj.type, obj.params);
-  }, [obj.type, obj.id, JSON.stringify(obj.params), importedGeometries]);
+    return buildGeometry(obj.type, obj.params, obj.smoothness);
+  }, [obj.type, obj.id, JSON.stringify(obj.params), obj.smoothness, importedGeometries]);
 
   // Primary selection = blue (#3b82f6), multi-selected = cyan (#06b6d4)
   const outlineColor = isPrimary ? "#3b82f6" : "#06b6d4";
@@ -83,9 +85,10 @@ function SceneMesh({
           metalness={obj.metalness}
           transparent={(obj.opacity ?? 1) < 1}
           opacity={obj.opacity ?? 1}
-          flatShading
+          flatShading={!obj.smoothness || obj.smoothness < 2}
           emissive={isSelected ? obj.color : "#000000"}
           emissiveIntensity={isSelected ? 0.08 : 0}
+          map={obj.texture ? getTexture(obj.texture) : null}
         />
       )}
       {/* Selection outline effect */}
@@ -123,8 +126,8 @@ function TransformGizmo({
     if (selectedObj.type === 'imported' && importedGeometries?.current?.has(selectedObj.id)) {
       return importedGeometries.current.get(selectedObj.id)!;
     }
-    return buildGeometry(selectedObj.type, selectedObj.params);
-  }, [selectedObj.type, selectedObj.id, JSON.stringify(selectedObj.params), importedGeometries]);
+    return buildGeometry(selectedObj.type, selectedObj.params, selectedObj.smoothness);
+  }, [selectedObj.type, selectedObj.id, JSON.stringify(selectedObj.params), selectedObj.smoothness, importedGeometries]);
 
   // Disable orbit controls while dragging transform
   useEffect(() => {
@@ -182,9 +185,10 @@ function TransformGizmo({
           metalness={selectedObj.metalness}
           transparent={(selectedObj.opacity ?? 1) < 1}
           opacity={selectedObj.opacity ?? 1}
-          flatShading
+          flatShading={!selectedObj.smoothness || selectedObj.smoothness < 2}
           emissive={selectedObj.color}
           emissiveIntensity={0.08}
+          map={selectedObj.texture ? getTexture(selectedObj.texture) : null}
         />
       </mesh>
     </TransformControls>
@@ -599,6 +603,20 @@ export default function CADViewport({
           selectedIds={selectedIds}
           visible={showRulers ?? true}
         />
+
+        {selectedObj && (
+          <DimensionHandles
+            obj={selectedObj}
+            visible={selectedIds.length === 1}
+            onScaleChange={(axis, newScale) => {
+              if (!primaryId || !selectedObj) return;
+              const scl: [number, number, number] = [...selectedObj.scale];
+              const idx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+              scl[idx] = newScale;
+              onTransformUpdate(primaryId, selectedObj.position, selectedObj.rotation, scl);
+            }}
+          />
+        )}
 
         <DimensionInput
           position={dimInput.position}

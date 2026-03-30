@@ -63,6 +63,8 @@ import AlignToolbar from "@/components/AlignToolbar";
 import SketchfabSearch from "@/components/SketchfabSearch";
 import ToolCallChip from "@/components/ToolCallChip";
 import ShapeDrawer from "@/components/ShapeDrawer";
+import { MATERIAL_PRESETS, PRESET_KEYS, getPreset, SMOOTHNESS_LEVELS } from "@/lib/materialPresets";
+import { AVAILABLE_TEXTURES } from "@/lib/textureManager";
 
 const CADViewport = dynamic(() => import("@/components/CADViewport"), { ssr: false });
 
@@ -239,6 +241,33 @@ export default function GeneratePage() {
   const updateSelectedProp = useCallback((key: keyof SceneObject, value: any) => {
     if (!selectedId) return;
     const newObjects = objects.map(o => o.id === selectedId ? { ...o, [key]: value } : o);
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedId, pushHistory]);
+
+  const updateSelectedProps = useCallback((updates: Partial<SceneObject>) => {
+    if (!selectedId) return;
+    const newObjects = objects.map(o => o.id === selectedId ? { ...o, ...updates } : o);
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedId, pushHistory]);
+
+  const applyPreset = useCallback((presetKey: string) => {
+    if (!selectedId) return;
+    const preset = getPreset(presetKey);
+    const newObjects = objects.map(o =>
+      o.id === selectedId
+        ? {
+            ...o,
+            materialPreset: presetKey,
+            metalness: preset.metalness,
+            roughness: preset.roughness,
+            opacity: preset.opacity,
+            texture: preset.texture || undefined,
+            color: presetKey !== 'custom' ? preset.color : o.color,
+          }
+        : o
+    );
     setObjects(newObjects);
     pushHistory(newObjects, selectedId);
   }, [objects, selectedId, pushHistory]);
@@ -1238,9 +1267,64 @@ export default function GeneratePage() {
                       </div>
                     </div>
 
-                    {/* Material */}
+                    {/* Material Preset */}
                     <div>
-                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Material</label>
+                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Material Preset</label>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {PRESET_KEYS.map(key => (
+                          <button
+                            key={key}
+                            onClick={() => applyPreset(key)}
+                            className={`px-2 py-1 rounded text-[9px] font-medium transition-all ${
+                              selectedObj.materialPreset === key
+                                ? "bg-brand text-white"
+                                : "bg-surface-dark text-gray-400 hover:text-white hover:bg-surface-lighter border border-surface-border"
+                            }`}
+                          >
+                            {MATERIAL_PRESETS[key].name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Texture */}
+                    <div>
+                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Texture</label>
+                      <select
+                        value={selectedObj.texture || "none"}
+                        onChange={(e) => updateSelectedProp("texture", e.target.value === "none" ? undefined : e.target.value)}
+                        className="w-full mt-1 px-2 py-1.5 rounded bg-surface-dark border border-surface-border text-[11px] text-white focus:outline-none focus:border-brand/50"
+                      >
+                        <option value="none">None</option>
+                        {AVAILABLE_TEXTURES.map(t => (
+                          <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1).replace(/([A-Z])/g, ' $1')}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Smoothness */}
+                    <div>
+                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Smoothness</label>
+                      <div className="flex gap-1 mt-1">
+                        {SMOOTHNESS_LEVELS.map((level, idx) => (
+                          <button
+                            key={level.label}
+                            onClick={() => updateSelectedProp("smoothness", idx)}
+                            className={`flex-1 py-1 rounded text-[9px] font-medium transition-all ${
+                              (selectedObj.smoothness ?? 1) === idx
+                                ? "bg-brand text-white"
+                                : "bg-surface-dark text-gray-400 hover:text-white hover:bg-surface-lighter border border-surface-border"
+                            }`}
+                          >
+                            {level.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Material Properties */}
+                    <div>
+                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Material Properties</label>
                       <div className="space-y-1.5 mt-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] text-gray-400">Metalness</span>
@@ -1249,7 +1333,7 @@ export default function GeneratePage() {
                         <input
                           type="range" min="0" max="1" step="0.05"
                           value={selectedObj.metalness}
-                          onChange={(e) => updateSelectedProp("metalness", parseFloat(e.target.value))}
+                          onChange={(e) => updateSelectedProps({ metalness: parseFloat(e.target.value), materialPreset: "custom" })}
                           className="w-full h-1 accent-brand"
                         />
                         <div className="flex items-center justify-between">
@@ -1259,7 +1343,7 @@ export default function GeneratePage() {
                         <input
                           type="range" min="0" max="1" step="0.05"
                           value={selectedObj.roughness}
-                          onChange={(e) => updateSelectedProp("roughness", parseFloat(e.target.value))}
+                          onChange={(e) => updateSelectedProps({ roughness: parseFloat(e.target.value), materialPreset: "custom" })}
                           className="w-full h-1 accent-brand"
                         />
                         <div className="flex items-center justify-between">

@@ -70,12 +70,13 @@ function SceneMesh({
     >
       {obj.isHole ? (
         <meshStandardMaterial
-          color="#ff4444"
-          wireframe
+          color="#444444"
           transparent
-          opacity={0.55}
-          roughness={1}
+          opacity={0.5}
+          roughness={0.9}
           metalness={0}
+          side={THREE.DoubleSide}
+          wireframe={wireframe}
         />
       ) : (
         <meshStandardMaterial

@@ -44,6 +44,8 @@ import {
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
+import { exportToOBJ } from "@/utils/objExporter";
+import { exportToGLTF } from "@/utils/gltfExporter";
 import { loadFile, detectFormat } from "@/utils/fileImporter";
 import {
   type SceneObject,
@@ -117,6 +119,7 @@ export default function GeneratePage() {
   const [snapValue] = useState(0.5);
   const [gridVisible, setGridVisible] = useState(true);
   const [showRulers, setShowRulers] = useState(true);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [draggingShape, setDraggingShape] = useState<{ type: SceneObject["type"]; asHole: boolean } | null>(null);
 
   // ─── UI State ───
@@ -643,6 +646,26 @@ export default function GeneratePage() {
     }
   }, []);
 
+  const handleExportOBJ = useCallback(() => {
+    if (sceneRef.current) {
+      exportToOBJ(sceneRef.current, "spacevision_model.obj");
+      setChatMessages(prev => [...prev, { role: "ai", text: "Exported spacevision_model.obj + .mtl" }]);
+    }
+    setShowExportMenu(false);
+  }, []);
+
+  const handleExportGLTF = useCallback(async () => {
+    if (sceneRef.current) {
+      try {
+        await exportToGLTF(sceneRef.current, "spacevision_model.glb");
+        setChatMessages(prev => [...prev, { role: "ai", text: "Exported spacevision_model.glb" }]);
+      } catch (err: any) {
+        setChatMessages(prev => [...prev, { role: "ai", text: `GLB export failed: ${err.message}` }]);
+      }
+    }
+    setShowExportMenu(false);
+  }, []);
+
   const handleClearScene = useCallback(() => {
     setObjects([]);
     setSelectedIds([]);
@@ -1018,10 +1041,38 @@ export default function GeneratePage() {
             <div className="w-px h-4 bg-surface-border mx-1" />
             {objects.length > 0 && (
               <>
-                <button onClick={handleExportSTL} className="flex items-center gap-1 px-2 py-1 rounded bg-brand hover:bg-brand-hover text-white text-[11px] font-medium transition-colors">
-                  <Download className="w-3 h-3" />
-                  Export STL
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowExportMenu(prev => !prev)}
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-brand hover:bg-brand-hover text-white text-[11px] font-medium transition-colors"
+                  >
+                    <Download className="w-3 h-3" />
+                    Export
+                    <ChevronDown className="w-2.5 h-2.5" />
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute top-full left-0 mt-1 bg-surface-lighter border border-surface-border rounded-md shadow-xl py-1 z-50 min-w-[120px]">
+                      <button
+                        onClick={() => { handleExportSTL(); setShowExportMenu(false); }}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white"
+                      >
+                        STL (3D Print)
+                      </button>
+                      <button
+                        onClick={handleExportOBJ}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white"
+                      >
+                        OBJ + MTL
+                      </button>
+                      <button
+                        onClick={handleExportGLTF}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white"
+                      >
+                        GLB (GLTF)
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button onClick={handleClearScene} className="flex items-center gap-1 px-2 py-1 rounded bg-surface-lighter hover:bg-surface-border text-gray-300 text-[11px] font-medium transition-colors">
                   <RotateCcw className="w-3 h-3" />
                   Clear

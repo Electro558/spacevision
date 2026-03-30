@@ -53,6 +53,7 @@ import {
   duplicateObject,
   newId,
   serializeScene,
+  buildGeometry,
 } from "@/lib/cadStore";
 import { toggleSelection, canPerformBoolean, getSelectionCenter } from "@/lib/multiSelect";
 import { performGroupCSG } from "@/lib/csgEngine";
@@ -63,6 +64,7 @@ import AlignToolbar from "@/components/AlignToolbar";
 import SketchfabSearch from "@/components/SketchfabSearch";
 import ToolCallChip from "@/components/ToolCallChip";
 import ShapeDrawer from "@/components/ShapeDrawer";
+import ObjectListPanel from "@/components/ObjectListPanel";
 import { MATERIAL_PRESETS, PRESET_KEYS, getPreset, SMOOTHNESS_LEVELS } from "@/lib/materialPresets";
 import { AVAILABLE_TEXTURES } from "@/lib/textureManager";
 
@@ -290,6 +292,88 @@ export default function GeneratePage() {
     setObjects(newObjects);
     pushHistory(newObjects, id);
   }, [objects, pushHistory]);
+
+  // ─── Clipboard ───
+  const clipboardRef = useRef<Omit<SceneObject, 'id'>[]>([]);
+
+  const copySelected = useCallback(() => {
+    const sel = objects.filter(o => selectedIds.includes(o.id));
+    if (sel.length === 0) return;
+    clipboardRef.current = sel.map(({ id, ...rest }) => rest);
+  }, [objects, selectedIds]);
+
+  const pasteFromClipboard = useCallback(() => {
+    if (clipboardRef.current.length === 0) return;
+    const newObjs = clipboardRef.current.map(data => createObject(data.type, {
+      ...data,
+      name: `${data.name} Copy`,
+      position: [data.position[0] + 0.5, data.position[1], data.position[2] + 0.5],
+    }));
+    const newObjects = [...objects, ...newObjs];
+    setObjects(newObjects);
+    setSelectedIds(newObjs.map(o => o.id));
+    pushHistory(newObjects, newObjs[0]?.id || null);
+  }, [objects, pushHistory]);
+
+  const cutSelected = useCallback(() => {
+    copySelected();
+    if (selectedIds.length === 0) return;
+    const newObjects = objects.filter(o => !selectedIds.includes(o.id));
+    setObjects(newObjects);
+    setSelectedIds([]);
+    pushHistory(newObjects, null);
+  }, [copySelected, objects, selectedIds, pushHistory]);
+
+  // ─── Flatten to Ground ───
+  const flattenSelected = useCallback(() => {
+    if (selectedIds.length === 0) return;
+    const newObjects = objects.map(o => {
+      if (!selectedIds.includes(o.id)) return o;
+      // Compute bounding box to find bottom
+      const geo = buildGeometry(o.type, o.params);
+      geo.computeBoundingBox();
+      const minY = (geo.boundingBox?.min.y ?? -0.5) * o.scale[1];
+      return { ...o, position: [o.position[0], -minY, o.position[2]] as [number, number, number] };
+    });
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedIds, selectedId, pushHistory]);
+
+  // ─── Mirror/Flip ───
+  const flipSelected = useCallback((axis: 'x' | 'y' | 'z') => {
+    if (selectedIds.length === 0) return;
+    const idx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+    const newObjects = objects.map(o => {
+      if (!selectedIds.includes(o.id)) return o;
+      const newScale: [number, number, number] = [...o.scale];
+      newScale[idx] *= -1;
+      return { ...o, scale: newScale };
+    });
+    setObjects(newObjects);
+    pushHistory(newObjects, selectedId);
+  }, [objects, selectedIds, selectedId, pushHistory]);
+
+  const mirrorSelected = useCallback((axis: 'x' | 'y' | 'z') => {
+    if (selectedIds.length === 0) return;
+    const idx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
+    const sel = objects.filter(o => selectedIds.includes(o.id));
+    const mirrored = sel.map(o => {
+      const newPos: [number, number, number] = [...o.position];
+      newPos[idx] *= -1;
+      const newScale: [number, number, number] = [...o.scale];
+      newScale[idx] *= -1;
+      return createObject(o.type, {
+        ...o,
+        name: `${o.name} Mirror`,
+        position: newPos,
+        scale: newScale,
+      });
+    });
+    const newObjects = [...objects, ...mirrored];
+    setObjects(newObjects);
+    setSelectedIds(mirrored.map(o => o.id));
+    pushHistory(newObjects, mirrored[0]?.id || null);
+  }, [objects, selectedIds, pushHistory]);
 
   // ─── AI Streaming Handler ───
   const handleAIChat = useCallback(async (userMessage: string) => {
@@ -719,6 +803,13 @@ export default function GeneratePage() {
       // Don't intercept when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      if (e.key === "c" && (e.ctrlKey || e.metaKey)) { copySelected(); e.preventDefault(); return; }
+      if (e.key === "v" && (e.ctrlKey || e.metaKey)) { pasteFromClipboard(); e.preventDefault(); return; }
+      if (e.key === "x" && (e.ctrlKey || e.metaKey)) { cutSelected(); e.preventDefault(); return; }
+      if (e.key === "f" || e.key === "F") { flattenSelected(); e.preventDefault(); return; }
+      if (e.key === "X" && e.shiftKey && !e.ctrlKey && !e.metaKey) { flipSelected('x'); e.preventDefault(); return; }
+      if (e.key === "Y" && e.shiftKey && !e.ctrlKey && !e.metaKey) { flipSelected('y'); e.preventDefault(); return; }
+      if (e.key === "Z" && e.shiftKey && !e.ctrlKey && !e.metaKey) { flipSelected('z'); e.preventDefault(); return; }
       if (e.key === "g" && (e.ctrlKey || e.metaKey) && !e.shiftKey) { handleGroup(); e.preventDefault(); }
       else if (e.key === "G" && (e.ctrlKey || e.metaKey) && e.shiftKey) { if (selectedGroupId) handleUngroup(selectedGroupId); e.preventDefault(); }
       else if (e.key === "h" || e.key === "H") { handleToggleHole(); e.preventDefault(); }
@@ -737,7 +828,7 @@ export default function GeneratePage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [deleteSelected, duplicateSelected, undo, redo, objects, handleGroup, handleUngroup, handleToggleHole, selectedGroupId]);
+  }, [deleteSelected, duplicateSelected, undo, redo, objects, handleGroup, handleUngroup, handleToggleHole, selectedGroupId, copySelected, pasteFromClipboard, cutSelected, flattenSelected, flipSelected]);
 
   // ─── Primitives ───
   const primitiveTypes: { type: SceneObject["type"]; icon: any; label: string }[] = [
@@ -951,42 +1042,57 @@ export default function GeneratePage() {
         {/* Viewport + Side Panels */}
         <div className="flex-1 flex min-h-0">
 
-          {/* ─── Outliner (left side sub-panel) ─── */}
+          {/* ─── Object List Panel (left side) ─── */}
           {showOutliner && objects.length > 0 && (
             <div className="w-48 bg-surface border-r border-surface-border flex flex-col shrink-0 overflow-hidden">
-              <div className="h-7 border-b border-surface-border flex items-center justify-between px-2 shrink-0">
-                <span className="text-[10px] font-semibold text-gray-400 flex items-center gap-1">
-                  <Layers className="w-3 h-3" /> Scene ({objects.length})
-                </span>
-                <button onClick={() => setShowOutliner(false)} className="text-gray-600 hover:text-gray-300 transition-colors">
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {objects.map(obj => (
-                  <button
-                    key={obj.id}
-                    onClick={(e) => {
-                      if (e.shiftKey) {
-                        setSelectedIds(prev => toggleSelection(prev, obj.id));
-                      } else {
-                        setSelectedIds(prev => prev.length === 1 && prev[0] === obj.id ? [] : [obj.id]);
-                      }
-                    }}
-                    className={`w-full flex items-center gap-1.5 px-2 py-1 text-left transition-all ${
-                      selectedIds.includes(obj.id)
-                        ? "bg-brand/15 text-brand"
-                        : "text-gray-400 hover:bg-surface-lighter hover:text-white"
-                    }`}
-                  >
-                    <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: obj.color }} />
-                    <span className="text-[10px] truncate flex-1">{obj.name}</span>
-                    {!obj.visible && <EyeOffIcon className="w-2.5 h-2.5 text-gray-600 shrink-0" />}
-                    {obj.locked && <Lock className="w-2.5 h-2.5 text-gray-600 shrink-0" />}
-                  </button>
-                ))}
-              </div>
-              {/* Boolean toolbar in outliner panel */}
+              <ObjectListPanel
+                objects={objects}
+                csgGroups={csgGroups}
+                selectedIds={selectedIds}
+                onSelect={(id, additive) => {
+                  if (additive) {
+                    setSelectedIds(prev => toggleSelection(prev, id));
+                  } else {
+                    setSelectedIds(prev => prev.length === 1 && prev[0] === id ? [] : [id]);
+                  }
+                }}
+                onToggleVisibility={(id) => {
+                  const newObjects = objects.map(o => o.id === id ? { ...o, visible: !o.visible } : o);
+                  setObjects(newObjects);
+                  pushHistory(newObjects, selectedId);
+                }}
+                onToggleLock={(id) => {
+                  const newObjects = objects.map(o => o.id === id ? { ...o, locked: !o.locked } : o);
+                  setObjects(newObjects);
+                  pushHistory(newObjects, selectedId);
+                }}
+                onDelete={(id) => {
+                  const newObjects = objects.filter(o => o.id !== id);
+                  setObjects(newObjects);
+                  if (selectedIds.includes(id)) setSelectedIds(prev => prev.filter(sid => sid !== id));
+                  pushHistory(newObjects, null);
+                }}
+                onDuplicate={(id) => {
+                  const obj = objects.find(o => o.id === id);
+                  if (!obj) return;
+                  const dupe = duplicateObject(obj);
+                  const newObjects = [...objects, dupe];
+                  setObjects(newObjects);
+                  setSelectedIds([dupe.id]);
+                  pushHistory(newObjects, dupe.id);
+                }}
+                onRename={(id, name) => {
+                  const newObjects = objects.map(o => o.id === id ? { ...o, name } : o);
+                  setObjects(newObjects);
+                  pushHistory(newObjects, selectedId);
+                }}
+                onToggleHole={(id) => {
+                  const newObjects = objects.map(o => o.id === id ? { ...o, isHole: !o.isHole } : o);
+                  setObjects(newObjects);
+                  pushHistory(newObjects, selectedId);
+                }}
+              />
+              {/* Boolean toolbar */}
               <div className="border-t border-surface-border p-2 shrink-0">
                 <BooleanToolbar
                   selectedCount={selectedIds.length}
@@ -1001,7 +1107,7 @@ export default function GeneratePage() {
                   selectedGroupId={selectedGroupId}
                 />
               </div>
-              {/* Align toolbar in outliner panel */}
+              {/* Align toolbar */}
               <div className="border-t border-surface-border p-2 shrink-0">
                 <AlignToolbar
                   selectedCount={selectedIds.length}
@@ -1046,6 +1152,13 @@ export default function GeneratePage() {
                   showRulers={showRulers}
                   onSelect={(id: string) => setSelectedIds([id])}
                   onDeselect={() => setSelectedIds([])}
+                  onMarqueeSelect={(ids, additive) => {
+                    if (additive) {
+                      setSelectedIds(prev => [...new Set([...prev, ...ids])]);
+                    } else {
+                      setSelectedIds(ids);
+                    }
+                  }}
                   onTransformUpdate={handleTransformUpdate}
                   onSceneReady={(scene) => { sceneRef.current = scene; }}
                   importedGeometries={importedGeometries}
@@ -1409,6 +1522,11 @@ export default function GeneratePage() {
                         <span><kbd className="text-brand">M</kbd> Rulers</span>
                         <span><kbd className="text-brand">H</kbd> Hole</span>
                         <span><kbd className="text-brand">Esc</kbd> Deselect</span>
+                        <span><kbd className="text-brand">F</kbd> Flatten</span>
+                        <span><kbd className="text-brand">⌘C</kbd> Copy</span>
+                        <span><kbd className="text-brand">⌘V</kbd> Paste</span>
+                        <span><kbd className="text-brand">⌘X</kbd> Cut</span>
+                        <span><kbd className="text-brand">⇧X</kbd> Flip X</span>
                         <span><kbd className="text-brand">⌘Z</kbd> Undo</span>
                         <span><kbd className="text-brand">⌘Y</kbd> Redo</span>
                       </div>

@@ -1,11 +1,12 @@
 import type { NextConfig } from "next";
 
-const isProd = process.env.NODE_ENV === "production";
-
 const nextConfig: NextConfig = {
-  output: "export",
-  basePath: isProd ? "/spacevision" : "",
-  assetPrefix: isProd ? "/spacevision/" : "",
+  images: {
+    remotePatterns: [
+      { hostname: "lh3.googleusercontent.com" },
+      { hostname: "avatars.githubusercontent.com" },
+    ],
+  },
 };
 
 export default nextConfig;

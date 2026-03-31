@@ -17,8 +17,8 @@ import { snapToFace, type SnapResult } from "@/lib/snapEngine";
 import SnapIndicator from "./SnapIndicator";
 import SmartRulers from "./SmartRulers";
 import DimensionInput from "./DimensionInput";
+import SimpleDragControls from "./SimpleDragControls";
 import { getTexture } from "@/lib/textureManager";
-import DimensionHandles from "./DimensionHandles";
 
 /* ─── Selectable Mesh ─── */
 function SceneMesh({
@@ -397,6 +397,7 @@ export default function CADViewport({
   onSceneReady,
   importedGeometries,
   showRulers,
+  interactionMode = "simple",
   className = "",
   draggingShape,
   onDropShape,
@@ -416,6 +417,7 @@ export default function CADViewport({
   onSceneReady?: (scene: THREE.Scene) => void;
   importedGeometries?: React.RefObject<Map<string, THREE.BufferGeometry>>;
   showRulers?: boolean;
+  interactionMode?: "simple" | "advanced";
   className?: string;
   draggingShape?: { type: string; asHole: boolean } | null;
   onDropShape?: (type: string, position: [number, number, number], asHole: boolean) => void;
@@ -584,13 +586,14 @@ export default function CADViewport({
         <directionalLight position={[-3, 4, -3]} intensity={0.3} color="#bfdbfe" />
         <hemisphereLight color="#e0e7ff" groundColor="#1b1f27" intensity={0.2} />
 
-        {/* Render non-primary, non-grouped objects */}
-        {objects.filter(o => o.id !== primaryId && !o.groupId).map((obj) => (
+        {/* Render objects — in simple mode all objects stay in the loop;
+            in advanced mode the primary selected is excluded (rendered in TransformGizmo) */}
+        {objects.filter(o => (interactionMode === "simple" || o.id !== primaryId) && !o.groupId).map((obj) => (
           <SceneMesh
             key={obj.id}
             obj={obj}
             isSelected={selectedIds.includes(obj.id)}
-            isPrimary={false}
+            isPrimary={obj.id === primaryId}
             wireframe={wireframe}
             onSelect={onSelect}
             onPositionChange={() => {}}
@@ -612,8 +615,8 @@ export default function CADViewport({
           />
         ))}
 
-        {/* Primary selected object with transform controls (skip if grouped) */}
-        {selectedObj && !selectedObj.locked && !selectedObj.groupId && (
+        {/* Advanced mode: Primary selected with transform gizmo (skip if grouped) */}
+        {interactionMode === "advanced" && selectedObj && !selectedObj.locked && !selectedObj.groupId && (
           <TransformGizmo
             key={selectedObj.id}
             selectedObj={selectedObj}
@@ -626,18 +629,15 @@ export default function CADViewport({
           />
         )}
 
-        {/* Primary selected but locked — render without controls (skip if grouped) */}
-        {selectedObj && selectedObj.locked && !selectedObj.groupId && (
-          <SceneMesh
-            obj={selectedObj}
-            isSelected={true}
-            isPrimary={true}
-            wireframe={wireframe}
-            onSelect={onSelect}
-            onPositionChange={() => {}}
-            onRotationChange={() => {}}
-            onScaleChange={() => {}}
-            importedGeometries={importedGeometries}
+        {/* Simple mode: click-and-drag controls */}
+        {interactionMode === "simple" && selectedIds.length > 0 && (
+          <SimpleDragControls
+            objects={objects}
+            selectedIds={selectedIds}
+            snapEnabled={snapEnabled}
+            snapValue={snapValue}
+            orbitRef={orbitRef}
+            onTransformUpdate={onTransformUpdate}
           />
         )}
 
@@ -692,20 +692,6 @@ export default function CADViewport({
           selectedIds={selectedIds}
           visible={showRulers ?? true}
         />
-
-        {selectedObj && (
-          <DimensionHandles
-            obj={selectedObj}
-            visible={selectedIds.length === 1}
-            onScaleChange={(axis, newScale) => {
-              if (!primaryId || !selectedObj) return;
-              const scl: [number, number, number] = [...selectedObj.scale];
-              const idx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
-              scl[idx] = newScale;
-              onTransformUpdate(primaryId, selectedObj.position, selectedObj.rotation, scl);
-            }}
-          />
-        )}
 
         <DimensionInput
           position={dimInput.position}

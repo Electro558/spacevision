@@ -41,6 +41,9 @@ import {
   Search as SearchIcon,
   Star,
   Hexagon,
+  Hand,
+  Crosshair,
+  HelpCircle,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
@@ -67,6 +70,7 @@ import SketchfabSearch from "@/components/SketchfabSearch";
 import ToolCallChip from "@/components/ToolCallChip";
 import ShapeDrawer from "@/components/ShapeDrawer";
 import ObjectListPanel from "@/components/ObjectListPanel";
+import TutorialOverlay from "@/components/TutorialOverlay";
 import { MATERIAL_PRESETS, PRESET_KEYS, getPreset, SMOOTHNESS_LEVELS } from "@/lib/materialPresets";
 import { AVAILABLE_TEXTURES } from "@/lib/textureManager";
 
@@ -121,6 +125,8 @@ export default function GeneratePage() {
   const [showRulers, setShowRulers] = useState(true);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [draggingShape, setDraggingShape] = useState<{ type: SceneObject["type"]; asHole: boolean } | null>(null);
+  const [interactionMode, setInteractionMode] = useState<"simple" | "advanced">("simple");
+  const [tutorialActive, setTutorialActive] = useState(false);
 
   // ─── UI State ───
   const [rightPanel, setRightPanel] = useState<"chat" | "properties" | "search">("properties");
@@ -162,6 +168,13 @@ export default function GeneratePage() {
         abortControllerRef.current.abort();
       }
     };
+  }, []);
+
+  // Auto-launch tutorial on first visit
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem("spacevision-tutorial-completed")) {
+      setTutorialActive(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -848,6 +861,8 @@ export default function GeneratePage() {
       else if (e.key === "x") { setSnapEnabled(prev => !prev); e.preventDefault(); }
       else if (e.key === "w") { setWireframe(prev => !prev); e.preventDefault(); }
       else if (e.key === "m" || e.key === "M") { setShowRulers(prev => !prev); e.preventDefault(); }
+      else if (e.key === "q" || e.key === "Q") { setInteractionMode(prev => prev === "simple" ? "advanced" : "simple"); e.preventDefault(); }
+      else if (e.key === "?") { setTutorialActive(prev => !prev); e.preventDefault(); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -885,14 +900,31 @@ export default function GeneratePage() {
 
         <div className="w-5 border-t border-surface-border my-1" />
 
-        {/* Transform tools */}
-        {([
+        {/* Interaction mode toggle */}
+        <button
+          data-tutorial="mode-toggle"
+          onClick={() => setInteractionMode(prev => prev === "simple" ? "advanced" : "simple")}
+          title={`Mode: ${interactionMode === "simple" ? "Simple (click & drag)" : "Advanced (gizmo)"} — Press Q to toggle`}
+          className={`w-8 h-8 rounded-md flex items-center justify-center transition-all text-[9px] font-bold ${
+            interactionMode === "simple"
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : "bg-purple-500/20 text-purple-400 border border-purple-500/30"
+          }`}
+        >
+          {interactionMode === "simple" ? <Hand className="w-3.5 h-3.5" /> : <Crosshair className="w-3.5 h-3.5" />}
+        </button>
+
+        <div className="w-5 border-t border-surface-border my-1" />
+
+        {/* Transform tools (only visible in advanced mode) */}
+        {interactionMode === "advanced" && ([
           { mode: "translate" as const, icon: Move, label: "Move (G)", key: "G" },
           { mode: "rotate" as const, icon: RotateCw, label: "Rotate (R)", key: "R" },
           { mode: "scale" as const, icon: Maximize2, label: "Scale (S)", key: "S" },
         ]).map(tool => (
           <button
             key={tool.mode}
+            data-tutorial={tool.mode === "translate" ? "transform-tools" : undefined}
             onClick={() => setTransformMode(tool.mode)}
             title={tool.label}
             className={`w-8 h-8 rounded-md flex items-center justify-center transition-all ${
@@ -1013,6 +1045,15 @@ export default function GeneratePage() {
             </button>
           </>
         )}
+
+        {/* Help / Tutorial */}
+        <button
+          onClick={() => setTutorialActive(true)}
+          title="Tutorial (?)"
+          className="w-8 h-8 rounded-md flex items-center justify-center text-gray-500 hover:text-white hover:bg-surface-lighter transition-all"
+        >
+          <HelpCircle className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* ─── Main Area ─── */}
@@ -1043,6 +1084,7 @@ export default function GeneratePage() {
               <>
                 <div className="relative">
                   <button
+                    data-tutorial="export"
                     onClick={() => setShowExportMenu(prev => !prev)}
                     className="flex items-center gap-1 px-2 py-1 rounded bg-brand hover:bg-brand-hover text-white text-[11px] font-medium transition-colors"
                   >
@@ -1201,6 +1243,7 @@ export default function GeneratePage() {
                   snapValue={snapValue}
                   gridVisible={gridVisible}
                   showRulers={showRulers}
+                  interactionMode={interactionMode}
                   onSelect={(id: string) => setSelectedIds([id])}
                   onDeselect={() => setSelectedIds([])}
                   onMarqueeSelect={(ids, additive) => {
@@ -1266,7 +1309,7 @@ export default function GeneratePage() {
           </div>
 
           {/* ─── Right Panel ─── */}
-          <div className="w-64 bg-surface border-l border-surface-border flex flex-col shrink-0 overflow-hidden">
+          <div data-tutorial="properties" className="w-64 bg-surface border-l border-surface-border flex flex-col shrink-0 overflow-hidden">
             {/* Panel tabs */}
             <div className="h-7 border-b border-surface-border flex shrink-0">
               <button
@@ -1642,7 +1685,7 @@ export default function GeneratePage() {
         <div className="h-5 bg-surface border-t border-surface-border flex items-center px-3 text-[9px] text-gray-600 gap-4 shrink-0">
           <span>Objects: {objects.length}</span>
           {selectedIds.length > 0 && <span className="text-brand">Selected: {selectedIds.length}</span>}
-          <span>Mode: {transformMode}</span>
+          <span>{interactionMode === "simple" ? "Simple" : `Advanced: ${transformMode}`}</span>
           {snapEnabled && <span className="text-yellow-500">Snap: {snapValue}</span>}
           {wireframe && <span className="text-blue-400">Wireframe</span>}
           {showRulers && <span className="text-blue-400">Rulers</span>}
@@ -1651,6 +1694,17 @@ export default function GeneratePage() {
           <span className="ml-auto">SpaceVision CAD</span>
         </div>
       </div>
+
+      {/* Tutorial Overlay */}
+      <TutorialOverlay
+        isActive={tutorialActive}
+        onClose={() => setTutorialActive(false)}
+        onAddDemoCube={() => {
+          if (objects.length === 0) {
+            addPrimitive("box");
+          }
+        }}
+      />
     </div>
   );
 }

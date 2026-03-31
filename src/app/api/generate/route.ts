@@ -1,7 +1,11 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { getFewShotExamples, formatFewShotPrompt } from '@/lib/training/compositionRecipes';
 
 const client = new Anthropic();
+
+// Pre-compute few-shot examples for the system prompt
+const FEW_SHOT_BLOCK = formatFewShotPrompt(getFewShotExamples(6));
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -241,9 +245,19 @@ Rules:
 - Use descriptive object names (e.g., "House Wall Left" not "Box 1").
 - After making changes, briefly explain what you did in plain text.
 - When the user refers to "it" or "that", use conversation context and the current scene to determine what they mean.
-- For complex models, build them from multiple primitives composed together.
-- Choose materials that match the object (wood: roughness=0.8, metalness=0; metal: metalness=0.8, roughness=0.2; glass: metalness=0.1, roughness=0.05).
+- For complex models, build them from multiple primitives composed together. Use 5-15 primitives for detailed objects.
+- Choose materials that match the object (wood: roughness=0.8, metalness=0; metal: metalness=0.8, roughness=0.2; glass: metalness=0.1, roughness=0.05, opacity=0.5; stone: roughness=0.95, metalness=0).
 - When asked general questions (not about scene manipulation), respond helpfully as a 3D modeling expert.
+
+Spatial reference (common real-world proportions in scene units):
+- Door: 0.8 wide, 2.0 tall | Window: 0.6 wide, 0.6 tall
+- Table: 0.75 tall, 1.2-2.0 long | Chair: seat at 0.45, total 0.9 tall
+- Person height: ~1.8 | Car: ~1.8 wide, ~4.0 long, ~1.4 tall
+- Room: 3-5 wide, 2.5 tall | House: 2-3 wide, 2.0 walls + roof
+
+Composition examples (follow these patterns for quality output):
+
+${FEW_SHOT_BLOCK}
 
 Current scene:
 ${sceneState}`;

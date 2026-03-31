@@ -451,3 +451,59 @@ export function serializeScene(objects: SceneObject[]): string {
 
 /* generateFromPrompt has been removed — replaced by Claude AI streaming tool-use.
    See src/app/api/generate/route.ts for the new implementation. */
+
+/**
+ * Converts scene objects to a plain JSON-serializable format for database storage.
+ * Strips Three.js refs and non-serializable data.
+ */
+export function sceneToJSON(objects: SceneObject[]): object[] {
+  return objects.map((obj) => ({
+    id: obj.id,
+    name: obj.name,
+    type: obj.type,
+    position: [...obj.position],
+    rotation: [...obj.rotation],
+    scale: [...obj.scale],
+    color: obj.color,
+    metalness: obj.metalness,
+    roughness: obj.roughness,
+    opacity: obj.opacity ?? 1,
+    materialPreset: obj.materialPreset || null,
+    texture: obj.texture || null,
+    smoothness: obj.smoothness ?? 0,
+    visible: obj.visible,
+    locked: obj.locked,
+    isHole: obj.isHole,
+    groupId: obj.groupId,
+    params: obj.params,
+  }));
+}
+
+/**
+ * Reconstructs SceneObject[] from stored JSON data.
+ * Assigns new IDs if needed and ensures all required fields have defaults.
+ */
+export function sceneFromJSON(data: unknown): SceneObject[] {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((item: Record<string, unknown>) => ({
+    id: (item.id as string) || crypto.randomUUID(),
+    name: (item.name as string) || "Object",
+    type: (item.type as SceneObject["type"]) || "box",
+    position: (item.position as [number, number, number]) || [0, 0, 0],
+    rotation: (item.rotation as [number, number, number]) || [0, 0, 0],
+    scale: (item.scale as [number, number, number]) || [1, 1, 1],
+    color: (item.color as string) || "#6366f1",
+    metalness: (item.metalness as number) ?? 0,
+    roughness: (item.roughness as number) ?? 0.5,
+    opacity: (item.opacity as number) ?? 1,
+    materialPreset: (item.materialPreset as string) || undefined,
+    texture: (item.texture as string) || undefined,
+    smoothness: (item.smoothness as number) ?? 0,
+    visible: (item.visible as boolean) ?? true,
+    locked: (item.locked as boolean) ?? false,
+    isHole: (item.isHole as boolean) ?? false,
+    groupId: (item.groupId as string) || null,
+    params: (item.params as ShapeParams) || {},
+  }));
+}

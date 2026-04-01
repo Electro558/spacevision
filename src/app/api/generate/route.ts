@@ -3,7 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getFewShotExamples, formatFewShotPrompt } from '@/lib/training/compositionRecipes';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getSettingNumber, getSettingBool } from '@/lib/settings';
+import { getSetting, getSettingNumber, getSettingBool } from '@/lib/settings';
 
 const client = new Anthropic();
 
@@ -342,7 +342,7 @@ export async function POST(req: NextRequest) {
       data: { userId: session.user.id },
     });
 
-    const { prompt, conversationHistory, sceneState } = await req.json();
+    const { prompt, conversationHistory, sceneState, consentToCapture } = await req.json();
 
     if (!prompt || typeof prompt !== 'string') {
       return new Response(
@@ -382,8 +382,13 @@ export async function POST(req: NextRequest) {
       return writePromise;
     };
 
+    // Determine which model to use (base or fine-tuned)
+    const activeModel = await getSetting("active_model");
+    const modelToUse = activeModel || 'claude-sonnet-4-20250514';
+
     // Process in background
     (async () => {
+      const allToolCalls: Array<{ name: string; input: Record<string, unknown> }> = [];
       try {
         let currentMessages = [...messages];
         let iterations = 0;
@@ -393,7 +398,7 @@ export async function POST(req: NextRequest) {
           iterations++;
 
           const response = client.messages.stream({
-            model: 'claude-sonnet-4-20250514',
+            model: modelToUse,
             max_tokens: 8192,
             system: systemPrompt,
             tools: TOOLS,
@@ -409,6 +414,7 @@ export async function POST(req: NextRequest) {
           response.on('contentBlock', (block) => {
             if (block.type === 'tool_use') {
               toolCalls.push({ id: block.id, name: block.name, input: block.input as Record<string, unknown> });
+              allToolCalls.push({ name: block.name, input: block.input as Record<string, unknown> });
               sendEvent({
                 type: 'tool_done',
                 tool: block.name,
@@ -446,6 +452,25 @@ export async function POST(req: NextRequest) {
 
           // Done - no more tool calls
           break;
+        }
+
+        // Capture generation data for training (non-blocking)
+        try {
+          const capture = await prisma.generationCapture.create({
+            data: {
+              userId: session.user.id,
+              prompt,
+              conversationHistory: Array.isArray(conversationHistory) ? conversationHistory : undefined,
+              toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
+              finalSceneState: sceneState ? JSON.parse(typeof sceneState === 'string' ? sceneState : JSON.stringify(sceneState)) : undefined,
+              sceneData: allToolCalls.filter(tc => tc.name === 'add_object').map(tc => tc.input),
+              modelUsed: modelToUse,
+              consentGiven: consentToCapture === true,
+            },
+          });
+          await sendEvent({ type: 'capture_id', captureId: capture.id });
+        } catch (captureErr) {
+          console.error('[Capture] Failed to save generation:', captureErr);
         }
 
         await sendEvent({ type: 'done' });

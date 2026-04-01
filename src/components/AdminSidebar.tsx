@@ -8,12 +8,14 @@ import {
   Box,
   Settings,
   ShieldCheck,
+  Brain,
 } from "lucide-react";
 
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/models", label: "Models", icon: Box },
+  { href: "/admin/training", label: "Training", icon: Brain },
   { href: "/admin/settings", label: "Settings", icon: Settings },
 ];
 

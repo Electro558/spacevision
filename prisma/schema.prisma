@@ -55,12 +55,15 @@ model User {
   stripeSubscriptionId String?
   dailyGenerations     Int       @default(0)
   lastGenerationDate   DateTime?
+  status               String    @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  savedModels SavedModel[]
+  accounts       Account[]
+  sessions       Session[]
+  savedModels    SavedModel[]
+  generationLogs GenerationLog[]
+  auditLogs      AuditLog[]
 }
 
 model SavedModel {
@@ -80,4 +83,35 @@ model SavedModel {
 enum Plan {
   FREE
   PREMIUM
+}
+
+model GenerationLog {
+  id        String   @id @default(cuid())
+  userId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  action    String
+  targetId  String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  admin     User     @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([createdAt])
 }

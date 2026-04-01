@@ -9,6 +9,9 @@ declare module "next-auth" {
       image?: string | null;
       plan: Plan;
       emailVerified: Date | null;
+      status: string;
+      impersonatingUserId?: string;
+      impersonatingUserName?: string;
     };
   }
 }
@@ -18,5 +21,8 @@ declare module "next-auth/jwt" {
     userId: string;
     plan: Plan;
     emailVerified: Date | null;
+    status: string;
+    impersonatingUserId?: string;
+    impersonatingUserName?: string;
   }
 }

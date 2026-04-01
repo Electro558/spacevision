@@ -53,11 +53,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   callbacks: {
     async signIn({ user, account }) {
+      // Check if user is banned
+      const dbUser = await prisma.user.findUnique({
+        where: { email: user.email! },
+        select: { password: true, status: true },
+      });
+
+      if (dbUser?.status === "BANNED") {
+        return false;
+      }
+
       if (account?.provider === "credentials") {
-        const dbUser = await prisma.user.findUnique({
-          where: { email: user.email! },
-          select: { password: true },
-        });
         if (!dbUser?.password) return false;
       }
       return true;
@@ -66,22 +72,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         const dbUser = await prisma.user.findUnique({
           where: { email: user.email! },
-          select: { id: true, plan: true, emailVerified: true },
+          select: { id: true, plan: true, emailVerified: true, status: true },
         });
         if (dbUser) {
           token.userId = dbUser.id;
           token.plan = dbUser.plan;
           token.emailVerified = dbUser.emailVerified;
+          token.status = dbUser.status;
         }
       }
       if (trigger === "update" && token.userId) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.userId as string },
-          select: { plan: true, emailVerified: true },
+          select: { plan: true, emailVerified: true, status: true },
         });
         if (dbUser) {
           token.plan = dbUser.plan;
           token.emailVerified = dbUser.emailVerified;
+          token.status = dbUser.status;
         }
       }
       return token;
@@ -91,6 +99,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.userId as string;
         session.user.plan = token.plan as Plan;
         session.user.emailVerified = token.emailVerified as Date | null;
+        session.user.status = token.status as string;
+        session.user.impersonatingUserId = token.impersonatingUserId as string | undefined;
+        session.user.impersonatingUserName = token.impersonatingUserName as string | undefined;
       }
       return session;
     },

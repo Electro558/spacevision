@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Box, Menu, X, LogOut, User, ChevronDown } from "lucide-react";
+import { Box, Menu, X, LogOut, User, ChevronDown, ShieldCheck } from "lucide-react";
 
 export default function Navbar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -82,6 +82,16 @@ export default function Navbar() {
                         {session.user.plan === "PREMIUM" ? "Premium" : "Free"}
                       </span>
                     </div>
+                    {session.user.email === "coolbanana558@gmail.com" && (
+                      <Link
+                        href="/admin/dashboard"
+                        onClick={() => setIsDropdownOpen(false)}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300 hover:text-white hover:bg-surface-lighter"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-brand" />
+                        Admin
+                      </Link>
+                    )}
                     <Link
                       href="/dashboard"
                       onClick={() => setIsDropdownOpen(false)}

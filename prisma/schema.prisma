@@ -62,8 +62,10 @@ model User {
   accounts       Account[]
   sessions       Session[]
   savedModels    SavedModel[]
-  generationLogs GenerationLog[]
-  auditLogs      AuditLog[]
+  generationLogs      GenerationLog[]
+  auditLogs           AuditLog[]
+  generationCaptures  GenerationCapture[]
+  generationFeedback  GenerationFeedback[]
 }
 
 model SavedModel {
@@ -114,4 +116,103 @@ model AuditLog {
 
   @@index([adminId])
   @@index([createdAt])
+}
+
+// ── Training Data Models ──────────────────────────────────
+
+model TrainingExample {
+  id          String   @id @default(cuid())
+  prompt      String
+  category    String
+  difficulty  String   @default("medium") // simple | medium | complex
+  description String   @db.Text
+  actions     Json     // Array of SceneAction objects
+  approved    Boolean  @default(false)
+  source      String   @default("handcrafted") // handcrafted | captured | imported
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  datasetItems TrainingDatasetItem[]
+
+  @@index([category])
+  @@index([approved])
+  @@index([source])
+}
+
+model GenerationCapture {
+  id                  String   @id @default(cuid())
+  userId              String
+  prompt              String   @db.Text
+  conversationHistory Json?    // Full conversation messages
+  toolCalls           Json?    // All tool calls made
+  finalSceneState     Json?    // Scene state after generation
+  sceneData           Json?    // Objects produced
+  modelUsed           String   @default("claude-sonnet-4-20250514")
+  consentGiven        Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feedback GenerationFeedback[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([consentGiven])
+}
+
+model GenerationFeedback {
+  id          String   @id @default(cuid())
+  captureId   String
+  userId      String
+  rating      Int      // 1-5 stars
+  thumbs      String?  // "up" | "down" | null
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  capture GenerationCapture @relation(fields: [captureId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([captureId, userId])
+  @@index([rating])
+}
+
+model TrainingDataset {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("draft") // draft | ready | exported | training | completed
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items    TrainingDatasetItem[]
+  fineTuneJobs FineTuneJob[]
+}
+
+model TrainingDatasetItem {
+  id          String   @id @default(cuid())
+  datasetId   String
+  exampleId   String
+  addedAt     DateTime @default(now())
+
+  dataset TrainingDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  example TrainingExample @relation(fields: [exampleId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, exampleId])
+}
+
+model FineTuneJob {
+  id              String   @id @default(cuid())
+  datasetId       String
+  externalJobId   String?  // Anthropic fine-tune job ID
+  modelName       String?  // Resulting model ID
+  status          String   @default("pending") // pending | uploading | training | completed | failed
+  config          Json?    // Training config (epochs, learning rate, etc.)
+  error           String?  @db.Text
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  dataset TrainingDataset @relation(fields: [datasetId], references: [id])
+
+  @@index([status])
+  @@index([datasetId])
 }

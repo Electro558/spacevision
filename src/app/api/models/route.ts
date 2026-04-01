@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getSettingNumber } from "@/lib/settings";
 
 // GET /api/models — list user's models
 export async function GET() {
@@ -42,9 +43,10 @@ export async function POST(req: NextRequest) {
     const count = await prisma.savedModel.count({
       where: { userId: session.user.id },
     });
-    if (count >= 5) {
+    const modelLimit = await getSettingNumber("free_model_limit") ?? 5;
+    if (count >= modelLimit) {
       return NextResponse.json(
-        { error: "Free plan limit: 5 models. Upgrade to Premium for unlimited." },
+        { error: `Free plan limit: ${modelLimit} models. Upgrade to Premium for unlimited.` },
         { status: 403 }
       );
     }

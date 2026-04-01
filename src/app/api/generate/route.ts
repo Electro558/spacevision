@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getFewShotExamples, formatFewShotPrompt } from '@/lib/training/compositionRecipes';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { getSettingNumber, getSettingBool } from '@/lib/settings';
 
 const client = new Anthropic();
 
@@ -284,11 +285,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if AI generation is disabled globally
+    const aiDisabled = await getSettingBool("disable_ai_generation");
+    if (aiDisabled) {
+      return new Response(
+        JSON.stringify({ error: "AI generation is temporarily disabled" }),
+        { status: 503 }
+      );
+    }
+
     // Rate limiting for free users
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: { plan: true, dailyGenerations: true, lastGenerationDate: true },
+      select: { plan: true, dailyGenerations: true, lastGenerationDate: true, status: true },
     });
+
+    // Check user status
+    if (user && (user as any).status === "SUSPENDED") {
+      return new Response(
+        JSON.stringify({ error: "Your account has been suspended" }),
+        { status: 403 }
+      );
+    }
 
     if (user && user.plan === "FREE") {
       const now = new Date();
@@ -299,10 +317,11 @@ export async function POST(req: NextRequest) {
 
       const currentCount = isNewDay ? 0 : user.dailyGenerations;
 
-      if (currentCount >= 10) {
+      const genLimit = await getSettingNumber("free_generation_limit") ?? 10;
+      if (currentCount >= genLimit) {
         return new Response(
           JSON.stringify({
-            error: "Daily limit reached (10/day). Upgrade to Premium for unlimited.",
+            error: `Daily limit reached (${genLimit}/day). Upgrade to Premium for unlimited.`,
           }),
           { status: 429 }
         );
@@ -317,6 +336,11 @@ export async function POST(req: NextRequest) {
         },
       });
     }
+
+    // Log generation for analytics (all users)
+    await prisma.generationLog.create({
+      data: { userId: session.user.id },
+    });
 
     const { prompt, conversationHistory, sceneState } = await req.json();
 

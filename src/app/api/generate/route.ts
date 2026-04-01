@@ -1,6 +1,8 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { getFewShotExamples, formatFewShotPrompt } from '@/lib/training/compositionRecipes';
+import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 
 const client = new Anthropic();
 
@@ -265,6 +267,57 @@ ${sceneState}`;
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth check — AI generation requires login
+    const session = await auth();
+    if (!session?.user?.id) {
+      return new Response(
+        JSON.stringify({ error: "Sign in to use AI generation" }),
+        { status: 401 }
+      );
+    }
+
+    // Email verification check
+    if (!session.user.emailVerified) {
+      return new Response(
+        JSON.stringify({ error: "Please verify your email first" }),
+        { status: 403 }
+      );
+    }
+
+    // Rate limiting for free users
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { plan: true, dailyGenerations: true, lastGenerationDate: true },
+    });
+
+    if (user && user.plan === "FREE") {
+      const now = new Date();
+      const lastDate = user.lastGenerationDate;
+      const isNewDay =
+        !lastDate ||
+        lastDate.toISOString().slice(0, 10) !== now.toISOString().slice(0, 10);
+
+      const currentCount = isNewDay ? 0 : user.dailyGenerations;
+
+      if (currentCount >= 10) {
+        return new Response(
+          JSON.stringify({
+            error: "Daily limit reached (10/day). Upgrade to Premium for unlimited.",
+          }),
+          { status: 429 }
+        );
+      }
+
+      // Increment counter
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          dailyGenerations: isNewDay ? 1 : { increment: 1 },
+          lastGenerationDate: now,
+        },
+      });
+    }
+
     const { prompt, conversationHistory, sceneState } = await req.json();
 
     if (!prompt || typeof prompt !== 'string') {

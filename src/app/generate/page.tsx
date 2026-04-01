@@ -44,6 +44,8 @@ import {
   Hand,
   Crosshair,
   HelpCircle,
+  Save,
+  Crown,
 } from "lucide-react";
 import * as THREE from "three";
 import { exportToSTL } from "@/utils/stlExporter";
@@ -59,6 +61,8 @@ import {
   newId,
   serializeScene,
   buildGeometry,
+  sceneToJSON,
+  sceneFromJSON,
 } from "@/lib/cadStore";
 import { toggleSelection, canPerformBoolean, getSelectionCenter } from "@/lib/multiSelect";
 import { performGroupCSG } from "@/lib/csgEngine";
@@ -71,6 +75,8 @@ import ToolCallChip from "@/components/ToolCallChip";
 import ShapeDrawer from "@/components/ShapeDrawer";
 import ObjectListPanel from "@/components/ObjectListPanel";
 import TutorialOverlay from "@/components/TutorialOverlay";
+import { useSession } from "next-auth/react";
+import UpgradeModal from "@/components/UpgradeModal";
 import { MATERIAL_PRESETS, PRESET_KEYS, getPreset, SMOOTHNESS_LEVELS } from "@/lib/materialPresets";
 import { AVAILABLE_TEXTURES } from "@/lib/textureManager";
 
@@ -127,6 +133,14 @@ export default function GeneratePage() {
   const [draggingShape, setDraggingShape] = useState<{ type: SceneObject["type"]; asHole: boolean } | null>(null);
   const [interactionMode, setInteractionMode] = useState<"simple" | "advanced">("simple");
   const [tutorialActive, setTutorialActive] = useState(false);
+
+  // ─── Auth & Save/Load State ───
+  const { data: session } = useSession();
+  const [modelId, setModelId] = useState<string | null>(null);
+  const [modelName, setModelName] = useState<string>("");
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeFeature, setUpgradeFeature] = useState("");
 
   // ─── UI State ───
   const [rightPanel, setRightPanel] = useState<"chat" | "properties" | "search">("properties");
@@ -687,6 +701,82 @@ export default function GeneratePage() {
     setChatMessages(prev => [...prev, { role: "ai", text: "Scene cleared." }]);
   }, [pushHistory]);
 
+  // ─── Save / Load / Auto-save ───
+  const handleSave = async () => {
+    if (!session) return;
+    setSaveStatus("saving");
+
+    const sceneData = sceneToJSON(objects);
+    const canvas = document.querySelector("canvas");
+    const thumbnail = canvas?.toDataURL("image/jpeg", 0.6) || null;
+
+    try {
+      if (modelId) {
+        await fetch(`/api/models/${modelId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sceneData, thumbnail }),
+        });
+      } else {
+        const name = modelName || `Model ${new Date().toLocaleDateString()}`;
+        const res = await fetch("/api/models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, sceneData, thumbnail }),
+        });
+        const data = await res.json();
+        if (res.status === 403) {
+          setUpgradeFeature("Saving more models");
+          setShowUpgradeModal(true);
+          setSaveStatus("idle");
+          return;
+        }
+        if (data.model) {
+          setModelId(data.model.id);
+          setModelName(name);
+        }
+      }
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      setSaveStatus("idle");
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const loadId = params.get("modelId");
+    if (loadId && session) {
+      fetch(`/api/models/${loadId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.model) {
+            setModelId(data.model.id);
+            setModelName(data.model.name);
+            const loaded = sceneFromJSON(data.model.sceneData);
+            setObjects(loaded);
+          }
+        });
+    }
+  }, [session]);
+
+  // Auto-save every 30 seconds if model has been saved once and scene changed
+  const lastSavedRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!modelId || !session) return;
+
+    const interval = setInterval(() => {
+      const currentScene = JSON.stringify(sceneToJSON(objects));
+      if (currentScene !== lastSavedRef.current) {
+        lastSavedRef.current = currentScene;
+        handleSave();
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [modelId, session, objects]);
+
   // ─── Boolean / CSG Handlers ───
   const handleGroup = useCallback(() => {
     if (!canPerformBoolean(selectedIds)) return;
@@ -1079,6 +1169,16 @@ export default function GeneratePage() {
             <button onClick={redo} disabled={historyIndex >= history.length - 1} title="Redo (Ctrl+Y)" className="p-1 rounded text-gray-500 hover:text-white hover:bg-surface-lighter disabled:opacity-30 transition-all">
               <Redo2 className="w-3.5 h-3.5" />
             </button>
+            {session && (
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1 px-2 py-1 rounded bg-green-600 hover:bg-green-500 text-white text-[11px] font-medium transition-colors"
+                title="Save model"
+              >
+                <Save className="w-3 h-3" />
+                {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved!" : "Save"}
+              </button>
+            )}
             <div className="w-px h-4 bg-surface-border mx-1" />
             {objects.length > 0 && (
               <>
@@ -1101,16 +1201,38 @@ export default function GeneratePage() {
                         STL (3D Print)
                       </button>
                       <button
-                        onClick={handleExportOBJ}
-                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white"
+                        onClick={() => {
+                          if (session?.user?.plan !== "PREMIUM") {
+                            setUpgradeFeature("OBJ export");
+                            setShowUpgradeModal(true);
+                            setShowExportMenu(false);
+                            return;
+                          }
+                          handleExportOBJ();
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white flex items-center gap-1"
                       >
                         OBJ + MTL
+                        {session?.user?.plan !== "PREMIUM" && (
+                          <Crown className="w-3 h-3 text-yellow-400" />
+                        )}
                       </button>
                       <button
-                        onClick={handleExportGLTF}
-                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white"
+                        onClick={() => {
+                          if (session?.user?.plan !== "PREMIUM") {
+                            setUpgradeFeature("GLTF export");
+                            setShowUpgradeModal(true);
+                            setShowExportMenu(false);
+                            return;
+                          }
+                          handleExportGLTF();
+                        }}
+                        className="w-full text-left px-3 py-1.5 text-[11px] text-gray-300 hover:bg-brand/20 hover:text-white flex items-center gap-1"
                       >
                         GLB (GLTF)
+                        {session?.user?.plan !== "PREMIUM" && (
+                          <Crown className="w-3 h-3 text-yellow-400" />
+                        )}
                       </button>
                     </div>
                   )}
@@ -1694,6 +1816,12 @@ export default function GeneratePage() {
           <span className="ml-auto">SpaceVision CAD</span>
         </div>
       </div>
+
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        feature={upgradeFeature}
+      />
 
       {/* Tutorial Overlay */}
       <TutorialOverlay

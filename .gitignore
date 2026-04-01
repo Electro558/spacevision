@@ -3,3 +3,15 @@ node_modules/
 .superpowers/
 .env*.local
 training-data/
+
+/src/generated/prisma
+
+# Prisma
+prisma/migrations/migration_lock.toml
+
+# Vercel
+.vercel
+
+# Build artifacts
+out/
+tsconfig.tsbuildinfo

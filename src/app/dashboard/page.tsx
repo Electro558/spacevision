@@ -1,227 +1,283 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
-  FolderOpen,
-  Grid3X3,
-  List,
-  MoreHorizontal,
-  Download,
-  Share2,
-  Trash2,
-  Pencil,
-  Clock,
-  Box,
-  Users,
-  TrendingUp,
-  Heart,
-  Eye,
+  Plus, Trash2, Pencil, ExternalLink, Crown, Loader2,
+  FolderOpen, Check,
 } from "lucide-react";
 
-const ModelViewer = dynamic(() => import("@/components/ModelViewer"), { ssr: false });
-
-const SAVED_MODELS = [
-  { id: 1, prompt: "crystal dragon with glowing wings", createdAt: "2 hours ago", likes: 12, views: 45 },
-  { id: 2, prompt: "futuristic blue spaceship", createdAt: "5 hours ago", likes: 8, views: 32 },
-  { id: 3, prompt: "golden ancient temple", createdAt: "1 day ago", likes: 23, views: 89 },
-  { id: 4, prompt: "purple gemstone cluster", createdAt: "2 days ago", likes: 5, views: 18 },
-  { id: 5, prompt: "cute orange cat sitting", createdAt: "3 days ago", likes: 45, views: 156 },
-  { id: 6, prompt: "red sports car", createdAt: "1 week ago", likes: 34, views: 120 },
-];
-
-const PROJECTS = [
-  { id: 1, name: "Game Assets", count: 12, shared: false },
-  { id: 2, name: "School Project", count: 5, shared: true },
-  { id: 3, name: "Personal Collection", count: 24, shared: false },
-];
+interface SavedModel {
+  id: string;
+  name: string;
+  description: string | null;
+  thumbnail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export default function DashboardPage() {
-  const [view, setView] = useState<"grid" | "list">("grid");
-  const [activeMenu, setActiveMenu] = useState<number | null>(null);
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-surface-dark flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-brand animate-spin" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
+  );
+}
 
-  const stats = [
-    { label: "Total Models", value: "24", icon: Box, color: "text-brand" },
-    { label: "Total Likes", value: "127", icon: Heart, color: "text-pink-400" },
-    { label: "Total Views", value: "460", icon: Eye, color: "text-blue-400" },
-    { label: "Projects", value: "3", icon: FolderOpen, color: "text-yellow-400" },
-  ];
+function DashboardContent() {
+  const { data: session, status, update } = useSession();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [models, setModels] = useState<SavedModel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  const upgraded = searchParams.get("upgraded") === "true";
+  const isPremium = session?.user?.plan === "PREMIUM";
+
+  // Poll for plan update after Stripe checkout redirect
+  useEffect(() => {
+    if (!upgraded || isPremium) return;
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      const res = await fetch("/api/user/plan");
+      const data = await res.json();
+      if (data.plan === "PREMIUM") {
+        await update(); // Refresh session JWT
+        clearInterval(interval);
+      }
+      if (attempts >= 5) clearInterval(interval);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [upgraded, isPremium, update]);
+
+  // Fetch models
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    fetch("/api/models")
+      .then((res) => res.json())
+      .then((data) => {
+        setModels(data.models || []);
+        setLoading(false);
+      });
+  }, [status]);
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/models/${id}`, { method: "DELETE" });
+    setModels((prev) => prev.filter((m) => m.id !== id));
+    setDeleteConfirm(null);
+  };
+
+  const handleRename = async (id: string) => {
+    if (!renameValue.trim()) return;
+    await fetch(`/api/models/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: renameValue }),
+    });
+    setModels((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, name: renameValue } : m))
+    );
+    setRenamingId(null);
+  };
+
+  const handleManageSubscription = async () => {
+    const res = await fetch("/api/stripe/portal", { method: "POST" });
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  };
+
+  if (status === "loading" || loading) {
+    return (
+      <div className="min-h-screen bg-surface-dark flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-brand animate-spin" />
+      </div>
+    );
+  }
+
+  const modelLimit = isPremium ? null : 5;
+  const modelCountText = modelLimit
+    ? `${models.length} / ${modelLimit} models`
+    : `${models.length} models`;
 
   return (
-    <div className="min-h-screen pt-14 bg-surface-dark">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-start justify-between mb-8">
+    <div className="min-h-screen bg-surface-dark pt-24 pb-16 px-4">
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold mb-1">Dashboard</h1>
-            <p className="text-gray-400 text-sm">Manage your 3D models and projects.</p>
+            <h1 className="text-3xl font-bold text-white">Dashboard</h1>
+            <p className="text-gray-400 mt-1">
+              {modelCountText}
+              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-brand/10 text-brand">
+                {isPremium ? "Premium" : "Free"}
+              </span>
+            </p>
           </div>
-          <Link
-            href="/generate"
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand hover:bg-brand-hover text-white text-sm font-semibold transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            New Model
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {stats.map((stat) => (
-            <div key={stat.label} className="p-5 rounded-2xl bg-white/[0.02] border border-surface-border">
-              <div className="flex items-center justify-between mb-3">
-                <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                <TrendingUp className="w-3 h-3 text-green-400" />
-              </div>
-              <p className="text-2xl font-bold">{stat.value}</p>
-              <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Projects</h2>
-            <button className="text-xs text-brand hover:text-blue-300 transition-colors">View All</button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {PROJECTS.map((project) => (
-              <div
-                key={project.id}
-                className="p-5 rounded-2xl bg-white/[0.02] border border-surface-border hover:border-brand/20 transition-all cursor-pointer"
+          <div className="flex items-center gap-3">
+            {isPremium && (
+              <button
+                onClick={handleManageSubscription}
+                className="text-sm text-gray-400 hover:text-white transition-colors"
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-brand/10 flex items-center justify-center">
-                    <FolderOpen className="w-5 h-5 text-brand" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{project.name}</p>
-                    <p className="text-xs text-gray-500">{project.count} models</p>
+                Manage Subscription
+              </button>
+            )}
+            <Link
+              href="/generate"
+              className="flex items-center gap-2 bg-brand hover:bg-brand-hover text-white font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              New Model
+            </Link>
+          </div>
+        </div>
+
+        {/* Upgrade banner for free users */}
+        {!isPremium && (
+          <div className="bg-brand/10 border border-brand/30 rounded-xl p-4 mb-8 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Crown className="w-5 h-5 text-yellow-400" />
+              <div>
+                <p className="text-white font-medium">Upgrade to Premium</p>
+                <p className="text-gray-400 text-sm">Unlimited models, exports, and AI generations</p>
+              </div>
+            </div>
+            <Link
+              href="/pricing"
+              className="bg-brand hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            >
+              View Plans
+            </Link>
+          </div>
+        )}
+
+        {upgraded && isPremium && (
+          <div className="bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl p-4 mb-8 flex items-center gap-2">
+            <Check className="w-5 h-5" />
+            Welcome to Premium! You now have unlimited access.
+          </div>
+        )}
+
+        {/* Models Grid */}
+        {models.length === 0 ? (
+          <div className="text-center py-20">
+            <FolderOpen className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">No models yet</h2>
+            <p className="text-gray-400 mb-6">Create your first 3D model to see it here.</p>
+            <Link
+              href="/generate"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-brand-hover text-white font-medium px-6 py-3 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Start Creating
+            </Link>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {models.map((model) => (
+              <div
+                key={model.id}
+                className="bg-white/[0.02] border border-surface-border rounded-xl overflow-hidden group"
+              >
+                {/* Thumbnail */}
+                <div className="aspect-video bg-surface relative">
+                  {model.thumbnail ? (
+                    <img
+                      src={model.thumbnail}
+                      alt={model.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-600">
+                      No preview
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="p-4">
+                  {renamingId === model.id ? (
+                    <div className="flex gap-2">
+                      <input
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleRename(model.id)}
+                        className="flex-1 bg-surface border border-surface-border rounded px-2 py-1 text-white text-sm"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleRename(model.id)}
+                        className="text-green-400 hover:text-green-300 text-sm"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <h3 className="text-white font-medium truncate">{model.name}</h3>
+                  )}
+                  <p className="text-gray-500 text-xs mt-1">
+                    {new Date(model.updatedAt).toLocaleDateString()}
+                  </p>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 mt-3">
+                    <Link
+                      href={`/generate?modelId=${model.id}`}
+                      className="flex items-center gap-1 text-brand hover:text-brand-hover text-sm"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Open
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setRenamingId(model.id);
+                        setRenameValue(model.name);
+                      }}
+                      className="flex items-center gap-1 text-gray-400 hover:text-white text-sm"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Rename
+                    </button>
+                    {deleteConfirm === model.id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDelete(model.id)}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm(null)}
+                          className="text-gray-400 hover:text-white text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setDeleteConfirm(model.id)}
+                        className="flex items-center gap-1 text-gray-400 hover:text-red-400 text-sm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
-                {project.shared && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 text-xs">
-                    <Users className="w-3 h-3" /> Shared
-                  </span>
-                )}
               </div>
             ))}
-            <button className="p-5 rounded-2xl border-2 border-dashed border-surface-border hover:border-brand/30 transition-all flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-brand">
-              <Plus className="w-4 h-4" /> New Project
-            </button>
           </div>
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Recent Models</h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setView("grid")}
-                className={`p-2 rounded-lg transition-all ${view === "grid" ? "bg-white/10 text-white" : "text-gray-500 hover:text-white"}`}
-              >
-                <Grid3X3 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setView("list")}
-                className={`p-2 rounded-lg transition-all ${view === "list" ? "bg-white/10 text-white" : "text-gray-500 hover:text-white"}`}
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {view === "grid" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {SAVED_MODELS.map((model) => (
-                <motion.div
-                  key={model.id}
-                  layout
-                  className="group rounded-2xl bg-white/[0.02] border border-surface-border overflow-hidden hover:border-brand/20 transition-all"
-                >
-                  <div className="relative aspect-square bg-surface">
-                    <ModelViewer prompt={model.prompt} className="w-full h-full" />
-                    <div className="absolute top-3 right-3">
-                      <div className="relative">
-                        <button
-                          onClick={() => setActiveMenu(activeMenu === model.id ? null : model.id)}
-                          className="p-1.5 rounded-md bg-black/40 backdrop-blur text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 transition-all"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                        <AnimatePresence>
-                          {activeMenu === model.id && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.95, y: -5 }}
-                              animate={{ opacity: 1, scale: 1, y: 0 }}
-                              exit={{ opacity: 0, scale: 0.95, y: -5 }}
-                              className="absolute right-0 top-full mt-1 w-40 py-1 rounded-xl bg-surface-light border border-surface-border shadow-xl z-10"
-                            >
-                              {[
-                                { icon: Pencil, label: "Rename" },
-                                { icon: Share2, label: "Share" },
-                                { icon: Download, label: "Download STL" },
-                                { icon: Trash2, label: "Delete", danger: true },
-                              ].map((action) => (
-                                <button
-                                  key={action.label}
-                                  onClick={() => setActiveMenu(null)}
-                                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors ${
-                                    "danger" in action && action.danger ? "text-red-400" : "text-gray-300"
-                                  }`}
-                                >
-                                  <action.icon className="w-3.5 h-3.5" />
-                                  {action.label}
-                                </button>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <p className="text-sm font-medium truncate mb-1">&ldquo;{model.prompt}&rdquo;</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{model.createdAt}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1"><Heart className="w-3 h-3" />{model.likes}</span>
-                        <span className="flex items-center gap-1"><Eye className="w-3 h-3" />{model.views}</span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {SAVED_MODELS.map((model) => (
-                <div
-                  key={model.id}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-white/[0.02] border border-surface-border hover:border-brand/20 transition-all"
-                >
-                  <div className="w-16 h-16 rounded-lg bg-surface overflow-hidden shrink-0">
-                    <ModelViewer prompt={model.prompt} className="w-full h-full" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">&ldquo;{model.prompt}&rdquo;</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{model.createdAt}</p>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-500 shrink-0">
-                    <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {model.likes}</span>
-                    <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {model.views}</span>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all"><Share2 className="w-4 h-4" /></button>
-                    <button className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all"><Download className="w-4 h-4" /></button>
-                    <button className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-white/5 transition-all"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

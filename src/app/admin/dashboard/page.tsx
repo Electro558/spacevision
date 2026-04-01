@@ -16,6 +16,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  PieLabelRenderProps,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -152,7 +153,7 @@ export default function AdminDashboard() {
                 outerRadius={90}
                 dataKey="count"
                 nameKey="plan"
-                label={({ plan, count }: { plan: string; count: number }) => `${plan}: ${count}`}
+                label={(props: PieLabelRenderProps) => `${props.name || ""}: ${props.value}`}
               >
                 {charts.planDistribution.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />

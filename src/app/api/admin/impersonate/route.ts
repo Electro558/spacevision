@@ -24,8 +24,13 @@ export async function POST(req: NextRequest) {
   await logAdminAction(session.user.id, "impersonate_start", userId);
 
   // Create a new JWT with impersonation data
+  const cookieName = process.env.NODE_ENV === "production"
+    ? "__Secure-authjs.session-token"
+    : "authjs.session-token";
+
   const token = await encode({
     secret: process.env.NEXTAUTH_SECRET!,
+    salt: cookieName,
     token: {
       userId: session.user.id, // Keep real admin ID
       impersonatingUserId: target.id,
@@ -40,11 +45,6 @@ export async function POST(req: NextRequest) {
   });
 
   const response = NextResponse.json({ success: true });
-
-  // Set the new session cookie
-  const cookieName = process.env.NODE_ENV === "production"
-    ? "__Secure-authjs.session-token"
-    : "authjs.session-token";
 
   response.cookies.set(cookieName, token, {
     httpOnly: true,

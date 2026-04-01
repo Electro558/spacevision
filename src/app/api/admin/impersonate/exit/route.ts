@@ -25,8 +25,13 @@ export async function POST() {
   await logAdminAction(adminId, "impersonate_end", session.user.impersonatingUserId);
 
   // Restore admin session
+  const cookieName = process.env.NODE_ENV === "production"
+    ? "__Secure-authjs.session-token"
+    : "authjs.session-token";
+
   const token = await encode({
     secret: process.env.NEXTAUTH_SECRET!,
+    salt: cookieName,
     token: {
       userId: admin.id,
       plan: admin.plan,
@@ -39,10 +44,6 @@ export async function POST() {
   });
 
   const response = NextResponse.json({ success: true });
-
-  const cookieName = process.env.NODE_ENV === "production"
-    ? "__Secure-authjs.session-token"
-    : "authjs.session-token";
 
   response.cookies.set(cookieName, token, {
     httpOnly: true,

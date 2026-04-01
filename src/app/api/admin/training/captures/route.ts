@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       category: category || "uncategorized",
       difficulty: difficulty || "medium",
       description: `Captured from real user generation: "${capture.prompt}"`,
-      actions,
+      actions: JSON.parse(JSON.stringify(actions)),
       approved: false,
       source: "captured",
     },

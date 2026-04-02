@@ -79,9 +79,7 @@ export default function MeshGeneratorPage() {
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("colored");
-  const [viewerKey, setViewerKey] = useState(0); // Force re-mount on src change
-  const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null);
-  const [loadingModel, setLoadingModel] = useState(false);
+  const [viewerKey, setViewerKey] = useState(0);
 
   // Fetch history on mount
   useEffect(() => {
@@ -95,47 +93,10 @@ export default function MeshGeneratorPage() {
     }
   }, [session]);
 
-  // When a model is selected, download GLB through our proxy and create a blob URL
-  // Our proxy streams the file from Tripo CDN (which has no CORS headers)
+  // Reset view mode when selecting a new model
   useEffect(() => {
-    // Revoke old blob URL
-    if (modelBlobUrl) {
-      URL.revokeObjectURL(modelBlobUrl);
-      setModelBlobUrl(null);
-    }
-
-    if (!selectedModel?.id || selectedModel.status !== "success") return;
-
-    let cancelled = false;
-    setLoadingModel(true);
     setViewMode("colored");
     setViewerKey((k) => k + 1);
-
-    fetch(`/api/mesh/proxy-model?id=${selectedModel.id}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(`HTTP ${res.status}: ${text}`);
-        }
-        return res.arrayBuffer();
-      })
-      .then((buffer) => {
-        if (cancelled) return;
-        const blob = new Blob([buffer], { type: "model/gltf-binary" });
-        const url = URL.createObjectURL(blob);
-        setModelBlobUrl(url);
-        setLoadingModel(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error("Model load error:", err);
-        setLoadingModel(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
   // Poll for generation status
@@ -285,7 +246,9 @@ export default function MeshGeneratorPage() {
     );
   }
 
-  const modelReady = !!modelBlobUrl && !loadingModel;
+  // Model is ready to view when we have a selected successful generation
+  const modelReady = !!selectedModel?.id && selectedModel.status === "success";
+  const modelProxyUrl = modelReady ? `/api/mesh/proxy-model?id=${selectedModel.id}` : null;
 
   return (
     <div className="min-h-screen bg-background pt-14">
@@ -496,18 +459,13 @@ export default function MeshGeneratorPage() {
           {/* Center: 3D Viewer */}
           <div className="space-y-3">
             <div className="aspect-square lg:aspect-auto lg:h-[650px] bg-[#1a1a2e] border border-surface-border rounded-xl overflow-hidden relative">
-              {modelReady && modelBlobUrl ? (
+              {modelReady && modelProxyUrl ? (
                 <MeshModelViewer
                   key={`${selectedModel?.id}-${viewerKey}`}
-                  src={modelBlobUrl}
+                  src={modelProxyUrl}
                   className="w-full h-full"
                   viewMode={viewMode}
                 />
-              ) : loadingModel ? (
-                <div className="w-full h-full flex flex-col items-center justify-center">
-                  <Loader2 className="w-10 h-10 text-brand animate-spin mb-3" />
-                  <p className="text-sm text-gray-400">Loading 3D model...</p>
-                </div>
               ) : selectedModel?.thumbnailUrl ? (
                 <img
                   src={selectedModel.thumbnailUrl}

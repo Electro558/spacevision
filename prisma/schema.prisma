@@ -55,6 +55,8 @@ model User {
   stripeSubscriptionId String?
   dailyGenerations     Int       @default(0)
   lastGenerationDate   DateTime?
+  meshCreditsUsed      Int       @default(0) // Monthly mesh generation credits used
+  meshCreditsResetDate DateTime? // When credits reset
   status               String    @default("ACTIVE") // ACTIVE | SUSPENDED | BANNED
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
@@ -66,6 +68,7 @@ model User {
   auditLogs           AuditLog[]
   generationCaptures  GenerationCapture[]
   generationFeedback  GenerationFeedback[]
+  meshGenerations     MeshGeneration[]
 }
 
 model SavedModel {
@@ -215,4 +218,33 @@ model FineTuneJob {
 
   @@index([status])
   @@index([datasetId])
+}
+
+// ── Mesh Generation Models ──────────────────────────────────
+
+model MeshGeneration {
+  id              String   @id @default(cuid())
+  userId          String
+  prompt          String   @db.Text
+  imageUrl        String?  @db.Text // For image-to-3D
+  mode            String   @default("text_to_model") // text_to_model | image_to_model
+  style           String?  // null = realistic, or: lego, voxel, cartoon, sculpture
+  quality         String   @default("standard") // standard | hd | ultra
+  tripoTaskId     String?  // External Tripo3D task ID
+  status          String   @default("pending") // pending | running | success | failed
+  progress        Int      @default(0) // 0-100
+  resultUrl       String?  @db.Text // URL to download the model from Tripo
+  modelData       Json?    // Stored model URLs per format
+  thumbnailUrl    String?  @db.Text // Preview image
+  polyCount       Int?
+  error           String?  @db.Text
+  creditsUsed     Int      @default(1)
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -13,6 +13,7 @@ export default function Navbar() {
 
   const links = [
     { label: "Workspace", href: "/generate" },
+    { label: "Mesh Gen", href: "/mesh" },
     { label: "Gallery", href: "/gallery" },
     { label: "Pricing", href: "/pricing" },
     { label: "Dashboard", href: "/dashboard" },

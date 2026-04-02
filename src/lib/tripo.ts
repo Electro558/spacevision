@@ -21,17 +21,12 @@ export interface TripoTask {
   status: "queued" | "running" | "success" | "failed" | "cancelled" | "unknown";
   progress: number;
   output?: {
-    model?: {
-      url: string;
-      type: string;
-    };
-    rendered_image?: {
-      url: string;
-    };
-    pbr_model?: {
-      url: string;
-      type: string;
-    };
+    // Tripo v2.5 returns flat URL strings
+    pbr_model?: string;
+    rendered_image?: string;
+    generated_image?: string;
+    // Some versions may return objects
+    model?: { url: string; type: string } | string;
   };
   create_time?: number;
 }
@@ -140,8 +135,14 @@ export async function downloadModel(
     throw new Error(`Task ${taskId} is not complete (status: ${task.status})`);
   }
 
-  if (format === "glb" && task.output?.model?.url) {
-    return task.output.model.url;
+  if (format === "glb") {
+    // Tripo v2.5 returns flat URL strings
+    const pbr = typeof task.output?.pbr_model === "string" ? task.output.pbr_model : null;
+    const model = typeof task.output?.model === "string"
+      ? task.output.model
+      : typeof task.output?.model === "object" ? task.output.model?.url : null;
+    const url = pbr || model;
+    if (url) return url;
   }
 
   // Request format conversion

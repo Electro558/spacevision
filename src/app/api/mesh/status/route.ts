@@ -52,12 +52,20 @@ export async function GET(req: NextRequest) {
     };
 
     if (task.status === "success" && task.output) {
-      updateData.resultUrl = task.output.model?.url || null;
-      updateData.thumbnailUrl = task.output.rendered_image?.url || null;
+      // Tripo v2.5 returns flat URL strings for pbr_model, rendered_image, etc.
+      const pbr = typeof task.output.pbr_model === "string" ? task.output.pbr_model : null;
+      const rendered = typeof task.output.rendered_image === "string" ? task.output.rendered_image : null;
+      const model = typeof task.output.model === "string"
+        ? task.output.model
+        : typeof task.output.model === "object" ? task.output.model?.url : null;
+
+      // The GLB model URL — prefer pbr_model (has textures), fall back to model
+      updateData.resultUrl = pbr || model || null;
+      updateData.thumbnailUrl = rendered || (typeof task.output.generated_image === "string" ? task.output.generated_image : null);
       updateData.modelData = {
-        glb: task.output.model?.url,
-        pbr: task.output.pbr_model?.url,
-        rendered: task.output.rendered_image?.url,
+        glb: pbr || model,
+        rendered,
+        generated_image: task.output.generated_image,
       };
       updateData.completedAt = new Date();
     }

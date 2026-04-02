@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// Allow up to 60s for large model downloads
+export const maxDuration = 60;
+
 /**
- * Proxy the GLB model file through our server to avoid CORS issues
- * with Tripo's CDN URLs when loading in model-viewer.
+ * Proxy the GLB model through our server as a stream.
+ * This avoids CORS issues with Tripo's CDN (no Access-Control-Allow-Origin).
+ * Using streaming to handle large GLB files (10-20MB+).
  */
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -32,26 +36,28 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Fetch the GLB file from Tripo's CDN
+    // Fetch the GLB from Tripo's CDN server-side
     const modelRes = await fetch(meshGen.resultUrl);
 
-    if (!modelRes.ok) {
+    if (!modelRes.ok || !modelRes.body) {
       return NextResponse.json(
         { error: "Failed to fetch model from provider" },
         { status: 502 }
       );
     }
 
-    const modelBuffer = await modelRes.arrayBuffer();
-
-    // Return the GLB binary with proper headers
-    return new NextResponse(modelBuffer, {
+    // Stream the response body directly through to the client
+    // This avoids buffering the entire file in memory (important for large GLBs)
+    return new NextResponse(modelRes.body as ReadableStream, {
       status: 200,
       headers: {
         "Content-Type": "model/gltf-binary",
-        "Content-Length": modelBuffer.byteLength.toString(),
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Cache-Control": "public, max-age=86400, s-maxage=86400, immutable",
         "Access-Control-Allow-Origin": "*",
+        // Forward content-length if available
+        ...(modelRes.headers.get("content-length")
+          ? { "Content-Length": modelRes.headers.get("content-length")! }
+          : {}),
       },
     });
   } catch (error: any) {

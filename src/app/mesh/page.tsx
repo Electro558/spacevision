@@ -95,7 +95,8 @@ export default function MeshGeneratorPage() {
     }
   }, [session]);
 
-  // When a model is selected, download the GLB through our proxy and create a blob URL
+  // When a model is selected, download GLB through our proxy and create a blob URL
+  // Our proxy streams the file from Tripo CDN (which has no CORS headers)
   useEffect(() => {
     // Revoke old blob URL
     if (modelBlobUrl) {
@@ -111,12 +112,16 @@ export default function MeshGeneratorPage() {
     setViewerKey((k) => k + 1);
 
     fetch(`/api/mesh/proxy-model?id=${selectedModel.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load model");
-        return res.blob();
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+        return res.arrayBuffer();
       })
-      .then((blob) => {
+      .then((buffer) => {
         if (cancelled) return;
+        const blob = new Blob([buffer], { type: "model/gltf-binary" });
         const url = URL.createObjectURL(blob);
         setModelBlobUrl(url);
         setLoadingModel(false);

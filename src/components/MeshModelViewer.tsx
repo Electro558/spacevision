@@ -5,9 +5,8 @@ import { useEffect, useRef, useCallback } from "react";
 export type ViewMode = "colored" | "wireframe" | "solid";
 
 interface MeshModelViewerProps {
-  src: string;
+  src: string; // Can be a URL or blob URL
   alt?: string;
-  poster?: string;
   className?: string;
   viewMode?: ViewMode;
 }
@@ -15,14 +14,11 @@ interface MeshModelViewerProps {
 export default function MeshModelViewer({
   src,
   alt = "3D Model",
-  poster,
   className = "",
   viewMode = "colored",
 }: MeshModelViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<any>(null);
   const loaded = useRef(false);
-  const originalMaterials = useRef<Map<number, any>>(new Map());
 
   useEffect(() => {
     if (!loaded.current) {
@@ -33,59 +29,27 @@ export default function MeshModelViewer({
     }
   }, []);
 
-  // Save original material state so we can restore on "colored" mode
-  const saveOriginalMaterials = useCallback((viewer: any) => {
-    if (!viewer?.model?.materials) return;
-    originalMaterials.current.clear();
-    viewer.model.materials.forEach((material: any, i: number) => {
-      try {
-        const pbr = material.pbrMetallicRoughness;
-        originalMaterials.current.set(i, {
-          baseColor: pbr.baseColorFactor ? [...pbr.baseColorFactor] : [1, 1, 1, 1],
-          metallic: pbr.metallicFactor,
-          roughness: pbr.roughnessFactor,
-          baseColorTexture: pbr.baseColorTexture,
-        });
-      } catch {
-        // ignore
-      }
-    });
-  }, []);
-
-  // Apply view mode changes via model-viewer's scene graph
+  // Apply view mode changes via model-viewer scene graph
   const applyViewMode = useCallback(
     (viewer: any) => {
       if (!viewer?.model?.materials) return;
-
       try {
-        const materials = viewer.model.materials;
-
-        for (let i = 0; i < materials.length; i++) {
-          const material = materials[i];
+        for (const material of viewer.model.materials) {
           const pbr = material.pbrMetallicRoughness;
-
           if (viewMode === "wireframe") {
             pbr.setBaseColorFactor([0.45, 0.45, 0.45, 1.0]);
             pbr.setMetallicFactor(0.15);
             pbr.setRoughnessFactor(0.85);
-            // Remove base color texture to show flat grey
-            if (pbr.baseColorTexture) {
-              pbr.baseColorTexture.setTexture(null);
-            }
+            if (pbr.baseColorTexture) pbr.baseColorTexture.setTexture(null);
           } else if (viewMode === "solid") {
             pbr.setBaseColorFactor([0.65, 0.65, 0.65, 1.0]);
             pbr.setMetallicFactor(0.0);
             pbr.setRoughnessFactor(0.6);
-            if (pbr.baseColorTexture) {
-              pbr.baseColorTexture.setTexture(null);
-            }
-          } else {
-            // "colored" — restore originals by reloading src
-            // (material restoration is complex, force reload is more reliable)
+            if (pbr.baseColorTexture) pbr.baseColorTexture.setTexture(null);
           }
         }
       } catch {
-        // Model materials API may not be available
+        // Materials API may not be available
       }
     },
     [viewMode]
@@ -93,21 +57,15 @@ export default function MeshModelViewer({
 
   useEffect(() => {
     const el = containerRef.current?.querySelector("model-viewer") as any;
-    if (el?.model) {
-      applyViewMode(el);
-    }
+    if (el?.model) applyViewMode(el);
   }, [viewMode, applyViewMode]);
 
   const handleLoad = useCallback(() => {
     const el = containerRef.current?.querySelector("model-viewer") as any;
-    if (el) {
-      viewerRef.current = el;
-      saveOriginalMaterials(el);
-      if (viewMode !== "colored") {
-        setTimeout(() => applyViewMode(el), 150);
-      }
+    if (el && viewMode !== "colored") {
+      setTimeout(() => applyViewMode(el), 150);
     }
-  }, [viewMode, applyViewMode, saveOriginalMaterials]);
+  }, [viewMode, applyViewMode]);
 
   useEffect(() => {
     const el = containerRef.current?.querySelector("model-viewer") as any;
@@ -123,7 +81,6 @@ export default function MeshModelViewer({
       <model-viewer
         src={src}
         alt={alt}
-        poster={poster || undefined}
         camera-controls=""
         auto-rotate=""
         auto-rotate-delay="0"
@@ -142,14 +99,11 @@ export default function MeshModelViewer({
         exposure="1.0"
         tone-mapping="commerce"
         environment-image="neutral"
-        skybox-height="0"
         style={{
           width: "100%",
           height: "100%",
           backgroundColor: "transparent",
           borderRadius: "0.75rem",
-          // Force high DPI rendering
-          imageRendering: "auto" as any,
         }}
       />
     </div>

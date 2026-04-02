@@ -80,6 +80,8 @@ export default function MeshGeneratorPage() {
   const [downloading, setDownloading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("colored");
   const [viewerKey, setViewerKey] = useState(0); // Force re-mount on src change
+  const [modelBlobUrl, setModelBlobUrl] = useState<string | null>(null);
+  const [loadingModel, setLoadingModel] = useState(false);
 
   // Fetch history on mount
   useEffect(() => {
@@ -93,10 +95,42 @@ export default function MeshGeneratorPage() {
     }
   }, [session]);
 
-  // Reset view mode when selecting a new model
+  // When a model is selected, download the GLB through our proxy and create a blob URL
   useEffect(() => {
+    // Revoke old blob URL
+    if (modelBlobUrl) {
+      URL.revokeObjectURL(modelBlobUrl);
+      setModelBlobUrl(null);
+    }
+
+    if (!selectedModel?.id || selectedModel.status !== "success") return;
+
+    let cancelled = false;
+    setLoadingModel(true);
     setViewMode("colored");
     setViewerKey((k) => k + 1);
+
+    fetch(`/api/mesh/proxy-model?id=${selectedModel.id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load model");
+        return res.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        setModelBlobUrl(url);
+        setLoadingModel(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("Model load error:", err);
+        setLoadingModel(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModel?.id]);
 
   // Poll for generation status
@@ -212,10 +246,10 @@ export default function MeshGeneratorPage() {
   };
 
   const handleEditInStudio = () => {
-    if (!selectedModel?.resultUrl) return;
-    // Store the model URL in sessionStorage so Creative Studio can pick it up
+    if (!selectedModel?.id) return;
+    // Store the model info so Creative Studio can pick it up via proxy
     sessionStorage.setItem("importedMesh", JSON.stringify({
-      url: selectedModel.resultUrl,
+      proxyUrl: `/api/mesh/proxy-model?id=${selectedModel.id}`,
       prompt: selectedModel.prompt,
       thumbnailUrl: selectedModel.thumbnailUrl,
       id: selectedModel.id,
@@ -246,7 +280,7 @@ export default function MeshGeneratorPage() {
     );
   }
 
-  const modelUrl = selectedModel?.resultUrl;
+  const modelReady = !!modelBlobUrl && !loadingModel;
 
   return (
     <div className="min-h-screen bg-background pt-14">
@@ -457,14 +491,18 @@ export default function MeshGeneratorPage() {
           {/* Center: 3D Viewer */}
           <div className="space-y-3">
             <div className="aspect-square lg:aspect-auto lg:h-[650px] bg-[#1a1a2e] border border-surface-border rounded-xl overflow-hidden relative">
-              {modelUrl ? (
+              {modelReady && modelBlobUrl ? (
                 <MeshModelViewer
                   key={`${selectedModel?.id}-${viewerKey}`}
-                  src={modelUrl}
-                  poster={selectedModel?.thumbnailUrl || undefined}
+                  src={modelBlobUrl}
                   className="w-full h-full"
                   viewMode={viewMode}
                 />
+              ) : loadingModel ? (
+                <div className="w-full h-full flex flex-col items-center justify-center">
+                  <Loader2 className="w-10 h-10 text-brand animate-spin mb-3" />
+                  <p className="text-sm text-gray-400">Loading 3D model...</p>
+                </div>
               ) : selectedModel?.thumbnailUrl ? (
                 <img
                   src={selectedModel.thumbnailUrl}
@@ -481,7 +519,7 @@ export default function MeshGeneratorPage() {
             </div>
 
             {/* View Mode Toggle Bar */}
-            {modelUrl && (
+            {modelReady && (
               <div className="flex items-center justify-center gap-1 p-1 bg-white/[0.02] border border-surface-border rounded-lg w-fit mx-auto">
                 {VIEW_MODES.map((mode) => {
                   const Icon = mode.icon;
@@ -556,7 +594,7 @@ export default function MeshGeneratorPage() {
             )}
 
             {/* View Mode Info */}
-            {modelUrl && (
+            {modelReady && (
               <div className="p-4 bg-white/[0.02] border border-surface-border rounded-xl">
                 <h3 className="text-sm font-semibold text-white mb-2">View Mode</h3>
                 <p className="text-xs text-gray-400">

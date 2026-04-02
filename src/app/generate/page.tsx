@@ -1547,11 +1547,11 @@ export default function GeneratePage() {
 
                     {/* Rotation */}
                     <div>
-                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Rotation (rad)</label>
+                      <label className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Rotation (deg)</label>
                       <div className="grid grid-cols-3 gap-1 mt-1">
-                        <NumInput label="X" color="text-red-400" value={selectedObj.rotation[0]} step={0.05} onChange={v => updateSelectedProp("rotation", [v, selectedObj.rotation[1], selectedObj.rotation[2]])} />
-                        <NumInput label="Y" color="text-green-400" value={selectedObj.rotation[1]} step={0.05} onChange={v => updateSelectedProp("rotation", [selectedObj.rotation[0], v, selectedObj.rotation[2]])} />
-                        <NumInput label="Z" color="text-blue-400" value={selectedObj.rotation[2]} step={0.05} onChange={v => updateSelectedProp("rotation", [selectedObj.rotation[0], selectedObj.rotation[1], v])} />
+                        <NumInput label="X" color="text-red-400" value={Math.round(selectedObj.rotation[0] * 180 / Math.PI)} step={5} onChange={v => updateSelectedProp("rotation", [v * Math.PI / 180, selectedObj.rotation[1], selectedObj.rotation[2]])} />
+                        <NumInput label="Y" color="text-green-400" value={Math.round(selectedObj.rotation[1] * 180 / Math.PI)} step={5} onChange={v => updateSelectedProp("rotation", [selectedObj.rotation[0], v * Math.PI / 180, selectedObj.rotation[2]])} />
+                        <NumInput label="Z" color="text-blue-400" value={Math.round(selectedObj.rotation[2] * 180 / Math.PI)} step={5} onChange={v => updateSelectedProp("rotation", [selectedObj.rotation[0], selectedObj.rotation[1], v * Math.PI / 180])} />
                       </div>
                     </div>
 

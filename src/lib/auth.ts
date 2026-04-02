@@ -56,7 +56,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Check if user is banned
       const dbUser = await prisma.user.findUnique({
         where: { email: user.email! },
-        select: { password: true, status: true },
+        select: { password: true, status: true, emailVerified: true },
       });
 
       if (dbUser?.status === "BANNED") {
@@ -66,6 +66,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (account?.provider === "credentials") {
         if (!dbUser?.password) return false;
       }
+
+      // Auto-verify email for OAuth users (Google/GitHub already verify emails)
+      if (account?.provider !== "credentials" && dbUser && !dbUser.emailVerified) {
+        await prisma.user.update({
+          where: { email: user.email! },
+          data: { emailVerified: new Date() },
+        });
+      }
+
       return true;
     },
     async jwt({ token, user, trigger }) {

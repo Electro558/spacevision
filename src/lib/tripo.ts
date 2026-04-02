@@ -182,11 +182,17 @@ export async function downloadModel(
     attempts < 30
   );
 
-  if (conversionTask.status !== "success" || !conversionTask.output?.model?.url) {
+  if (conversionTask.status !== "success" || !conversionTask.output?.model) {
     throw new Error(`Format conversion failed for task ${taskId}`);
   }
 
-  return conversionTask.output.model.url;
+  const convModel = conversionTask.output.model;
+  const convUrl = typeof convModel === "string" ? convModel : convModel.url;
+  if (!convUrl) {
+    throw new Error(`Format conversion failed for task ${taskId}`);
+  }
+
+  return convUrl;
 }
 
 // ── Check Balance ──────────────────────────────────

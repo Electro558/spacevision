@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -16,7 +17,16 @@ import {
   ChevronDown,
   RefreshCw,
   Lock,
+  ArrowRight,
+  Eye,
+  Grid3X3,
+  Box,
+  Paintbrush,
+  RotateCcw,
+  Move,
+  ZoomIn,
 } from "lucide-react";
+import type { ViewMode } from "@/components/MeshModelViewer";
 
 // Lazy load the 3D viewer
 const MeshModelViewer = dynamic(() => import("@/components/MeshModelViewer"), {
@@ -51,8 +61,15 @@ const STYLES = [
   { value: "sculpture", label: "Sculpture", description: "Clay sculpture style" },
 ];
 
+const VIEW_MODES: { value: ViewMode; label: string; icon: typeof Paintbrush; description: string }[] = [
+  { value: "colored", label: "Textured", icon: Paintbrush, description: "Full color & textures" },
+  { value: "solid", label: "Clay", icon: Box, description: "Grey clay render" },
+  { value: "wireframe", label: "Wireframe", icon: Grid3X3, description: "Mesh wireframe view" },
+];
+
 export default function MeshGeneratorPage() {
   const { data: session, status: sessionStatus } = useSession();
+  const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [style, setStyle] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -64,6 +81,8 @@ export default function MeshGeneratorPage() {
   const [downloadFormat, setDownloadFormat] = useState("glb");
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("colored");
+  const [viewerKey, setViewerKey] = useState(0); // Force re-mount on src change
 
   // Fetch history on mount
   useEffect(() => {
@@ -77,10 +96,16 @@ export default function MeshGeneratorPage() {
     }
   }, [session]);
 
+  // Reset view mode when selecting a new model
+  useEffect(() => {
+    setViewMode("colored");
+    setViewerKey((k) => k + 1);
+  }, [selectedModel?.id]);
+
   // Poll for generation status
   const pollStatus = useCallback(async (genId: string) => {
     let attempts = 0;
-    const maxAttempts = 120; // 2 minutes at 1s intervals
+    const maxAttempts = 120;
 
     const poll = async () => {
       if (attempts >= maxAttempts) {
@@ -99,7 +124,6 @@ export default function MeshGeneratorPage() {
         if (data.status === "success") {
           setGenerating(false);
           setSelectedModel(data);
-          // Refresh history
           const histRes = await fetch("/api/mesh/history");
           const histData = await histRes.json();
           setHistory(histData.generations || []);
@@ -112,7 +136,6 @@ export default function MeshGeneratorPage() {
           return;
         }
 
-        // Keep polling
         setTimeout(poll, 1500);
       } catch {
         setTimeout(poll, 3000);
@@ -164,8 +187,6 @@ export default function MeshGeneratorPage() {
       });
 
       setCredits((prev) => ({ ...prev, remaining: data.creditsRemaining }));
-
-      // Start polling
       pollStatus(data.id);
     } catch (err: any) {
       setGenerating(false);
@@ -185,13 +206,24 @@ export default function MeshGeneratorPage() {
         return;
       }
 
-      // Open download URL
       window.open(data.url, "_blank");
     } catch {
       alert("Download failed");
     }
     setDownloading(false);
     setShowDownloadMenu(false);
+  };
+
+  const handleEditInStudio = () => {
+    if (!selectedModel?.resultUrl) return;
+    // Store the model URL in sessionStorage so Creative Studio can pick it up
+    sessionStorage.setItem("importedMesh", JSON.stringify({
+      url: selectedModel.resultUrl,
+      prompt: selectedModel.prompt,
+      thumbnailUrl: selectedModel.thumbnailUrl,
+      id: selectedModel.id,
+    }));
+    router.push("/generate?import=mesh");
   };
 
   if (sessionStatus === "loading") {
@@ -217,11 +249,13 @@ export default function MeshGeneratorPage() {
     );
   }
 
+  const modelUrl = selectedModel?.resultUrl;
+
   return (
     <div className="min-h-screen bg-background pt-14">
-      <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="max-w-[1600px] mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white flex items-center gap-3">
               <Sparkles className="w-8 h-8 text-brand" />
@@ -229,8 +263,7 @@ export default function MeshGeneratorPage() {
             </h1>
             <p className="text-gray-400 mt-1">Generate realistic 3D models from text descriptions</p>
           </div>
-          <div className="flex items-center gap-4">
-            {/* Credits Badge */}
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-4 py-2 bg-white/[0.02] border border-surface-border rounded-lg">
               <Zap className="w-4 h-4 text-yellow-400" />
               <span className="text-sm text-gray-300">
@@ -249,12 +282,13 @@ export default function MeshGeneratorPage() {
           </div>
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          {/* Left: Input */}
-          <div className="space-y-6">
+        {/* Main Layout: 3-column on large screens */}
+        <div className="grid lg:grid-cols-[340px_1fr_280px] gap-6">
+          {/* Left Panel: Controls */}
+          <div className="space-y-4">
             {/* Prompt Input */}
-            <div className="p-6 bg-white/[0.02] border border-surface-border rounded-xl">
-              <label className="block text-sm font-medium text-gray-300 mb-3">
+            <div className="p-5 bg-white/[0.02] border border-surface-border rounded-xl">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
                 Describe your 3D model
               </label>
               <textarea
@@ -267,19 +301,19 @@ export default function MeshGeneratorPage() {
                   }
                 }}
                 placeholder="A medieval knight's helmet with ornate gold engravings..."
-                rows={4}
+                rows={3}
                 className="w-full px-4 py-3 bg-gray-900 border border-surface-border rounded-lg text-white placeholder-gray-500 resize-none focus:outline-none focus:border-brand text-sm"
               />
 
               {/* Style Selector */}
-              <div className="mt-4">
+              <div className="mt-3">
                 <label className="block text-xs font-medium text-gray-500 mb-2">Style</label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-1.5">
                   {STYLES.map((s) => (
                     <button
                       key={s.value}
                       onClick={() => setStyle(s.value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                         style === s.value
                           ? "bg-brand text-white"
                           : "bg-white/[0.02] border border-surface-border text-gray-400 hover:text-white"
@@ -347,17 +381,110 @@ export default function MeshGeneratorPage() {
                 <p className="text-xs text-gray-500 mt-2">This usually takes 30-90 seconds</p>
               </div>
             )}
+
+            {/* Download Controls */}
+            {selectedModel?.status === "success" && (
+              <div className="p-5 bg-white/[0.02] border border-surface-border rounded-xl space-y-3">
+                <h3 className="text-sm font-medium text-gray-300">Export Model</h3>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <button
+                      onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                      disabled={downloading}
+                      className="w-full py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-medium rounded-lg flex items-center justify-center gap-2 text-sm"
+                    >
+                      {downloading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {downloadFormat.toUpperCase()}
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+                    {showDownloadMenu && (
+                      <div className="absolute bottom-full mb-1 left-0 right-0 bg-gray-900 border border-surface-border rounded-lg shadow-xl z-50 py-1">
+                        {[
+                          { fmt: "glb", label: "GLB", free: true },
+                          { fmt: "obj", label: "OBJ", free: true },
+                          { fmt: "fbx", label: "FBX", free: false },
+                          { fmt: "stl", label: "STL", free: false },
+                          { fmt: "usdz", label: "USDZ", free: false },
+                        ].map((f) => (
+                          <button
+                            key={f.fmt}
+                            onClick={() => {
+                              setDownloadFormat(f.fmt);
+                              handleDownload(selectedModel, f.fmt);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-white/5 flex items-center justify-between"
+                          >
+                            <span>{f.label}</span>
+                            {!f.free && session.user.plan === "FREE" && (
+                              <Crown className="w-3 h-3 text-yellow-400" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSelectedModel(null);
+                      setCurrentGen(null);
+                      setPrompt("");
+                      setViewMode("colored");
+                    }}
+                    className="px-3 py-2.5 bg-white/[0.02] border border-surface-border text-gray-400 hover:text-white rounded-lg text-sm"
+                    title="New generation"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Send to Creative Studio */}
+                <button
+                  onClick={handleEditInStudio}
+                  className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg flex items-center justify-center gap-2 text-sm transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Edit in Creative Studio
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+                <p className="text-xs text-gray-500 text-center">
+                  Use Claude AI to make manual changes
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Right: 3D Viewer */}
-          <div className="space-y-4">
-            <div className="aspect-square bg-white/[0.02] border border-surface-border rounded-xl overflow-hidden relative">
-              {selectedModel?.resultUrl ? (
-                <MeshModelViewer
-                  src={selectedModel.resultUrl}
-                  poster={selectedModel.thumbnailUrl || undefined}
-                  className="w-full h-full"
-                />
+          {/* Center: 3D Viewer */}
+          <div className="space-y-3">
+            <div className="aspect-[4/3] lg:aspect-auto lg:h-[600px] bg-white/[0.02] border border-surface-border rounded-xl overflow-hidden relative group">
+              {modelUrl ? (
+                <>
+                  <MeshModelViewer
+                    key={`${selectedModel?.id}-${viewerKey}`}
+                    src={modelUrl}
+                    poster={selectedModel?.thumbnailUrl || undefined}
+                    className="w-full h-full"
+                    viewMode={viewMode}
+                  />
+                  {/* Viewer controls hint overlay */}
+                  <div className="absolute bottom-3 left-3 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
+                      <RotateCcw className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-400">Drag to orbit</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
+                      <Move className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-400">Right-click to pan</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
+                      <ZoomIn className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-400">Scroll to zoom</span>
+                    </div>
+                  </div>
+                </>
               ) : selectedModel?.thumbnailUrl ? (
                 <img
                   src={selectedModel.thumbnailUrl}
@@ -368,69 +495,149 @@ export default function MeshGeneratorPage() {
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
                   <ImageIcon className="w-16 h-16 mb-3" />
                   <p className="text-sm">Your 3D model will appear here</p>
+                  <p className="text-xs text-gray-700 mt-1">Drag to orbit • Scroll to zoom • Right-click to pan</p>
                 </div>
               )}
             </div>
 
-            {/* Download Controls */}
-            {selectedModel?.status === "success" && (
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <button
-                    onClick={() => setShowDownloadMenu(!showDownloadMenu)}
-                    disabled={downloading}
-                    className="w-full py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-medium rounded-lg flex items-center justify-center gap-2 text-sm"
-                  >
-                    {downloading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Download className="w-4 h-4" />
-                    )}
-                    Download {downloadFormat.toUpperCase()}
-                    <ChevronDown className="w-3 h-3" />
-                  </button>
-                  {showDownloadMenu && (
-                    <div className="absolute top-full mt-1 left-0 right-0 bg-gray-900 border border-surface-border rounded-lg shadow-xl z-50 py-1">
-                      {[
-                        { fmt: "glb", label: "GLB", free: true },
-                        { fmt: "obj", label: "OBJ", free: true },
-                        { fmt: "fbx", label: "FBX", free: false },
-                        { fmt: "stl", label: "STL", free: false },
-                        { fmt: "usdz", label: "USDZ", free: false },
-                      ].map((f) => (
-                        <button
-                          key={f.fmt}
-                          onClick={() => {
-                            setDownloadFormat(f.fmt);
-                            handleDownload(selectedModel, f.fmt);
-                          }}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-white/5 flex items-center justify-between"
-                        >
-                          <span>{f.label}</span>
-                          {!f.free && session.user.plan === "FREE" && (
-                            <Crown className="w-3 h-3 text-yellow-400" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedModel(null);
-                    setCurrentGen(null);
-                    setPrompt("");
-                  }}
-                  className="px-4 py-2.5 bg-white/[0.02] border border-surface-border text-gray-400 hover:text-white rounded-lg text-sm"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
+            {/* View Mode Toggle Bar */}
+            {modelUrl && (
+              <div className="flex items-center justify-center gap-1 p-1 bg-white/[0.02] border border-surface-border rounded-lg w-fit mx-auto">
+                {VIEW_MODES.map((mode) => {
+                  const Icon = mode.icon;
+                  return (
+                    <button
+                      key={mode.value}
+                      onClick={() => setViewMode(mode.value)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                        viewMode === mode.value
+                          ? "bg-brand text-white shadow-lg shadow-brand/20"
+                          : "text-gray-400 hover:text-white hover:bg-white/5"
+                      }`}
+                      title={mode.description}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {mode.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
+
+          {/* Right Panel: Model Info & Quick History */}
+          <div className="space-y-4">
+            {/* Model Info Card */}
+            {selectedModel && (
+              <div className="p-5 bg-white/[0.02] border border-surface-border rounded-xl space-y-3">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-brand" />
+                  Model Details
+                </h3>
+                <div className="space-y-2">
+                  <div>
+                    <span className="text-xs text-gray-500">Prompt</span>
+                    <p className="text-sm text-gray-300 mt-0.5">{selectedModel.prompt}</p>
+                  </div>
+                  <div className="flex gap-4">
+                    {selectedModel.style && (
+                      <div>
+                        <span className="text-xs text-gray-500">Style</span>
+                        <p className="text-sm text-gray-300 mt-0.5 capitalize">{selectedModel.style || "Realistic"}</p>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-xs text-gray-500">Status</span>
+                      <p className="text-sm text-green-400 mt-0.5 capitalize">{selectedModel.status}</p>
+                    </div>
+                  </div>
+                  {selectedModel.completedAt && (
+                    <div>
+                      <span className="text-xs text-gray-500">Created</span>
+                      <p className="text-sm text-gray-300 mt-0.5">
+                        {new Date(selectedModel.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Thumbnail preview */}
+                {selectedModel.thumbnailUrl && (
+                  <div className="mt-3">
+                    <span className="text-xs text-gray-500">Reference Image</span>
+                    <img
+                      src={selectedModel.thumbnailUrl}
+                      alt="Model render"
+                      className="w-full aspect-video object-cover rounded-lg mt-1 border border-surface-border"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* View Mode Info */}
+            {modelUrl && (
+              <div className="p-4 bg-white/[0.02] border border-surface-border rounded-xl">
+                <h3 className="text-sm font-semibold text-white mb-2">View Mode</h3>
+                <p className="text-xs text-gray-400">
+                  {viewMode === "colored" && "Showing the full textured model with PBR materials and colors."}
+                  {viewMode === "solid" && "Grey clay render showing the model's shape without textures."}
+                  {viewMode === "wireframe" && "Wireframe view showing the underlying mesh geometry."}
+                </p>
+              </div>
+            )}
+
+            {/* Recent Generations */}
+            <div className="p-5 bg-white/[0.02] border border-surface-border rounded-xl">
+              <h3 className="text-sm font-semibold text-white mb-3">Recent</h3>
+              {history.length === 0 ? (
+                <p className="text-xs text-gray-500">No generations yet</p>
+              ) : (
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {history.slice(0, 8).map((gen) => (
+                    <button
+                      key={gen.id}
+                      onClick={() => {
+                        if (gen.status === "success") {
+                          setSelectedModel(gen);
+                        }
+                      }}
+                      className={`w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-white/5 transition-colors ${
+                        selectedModel?.id === gen.id ? "bg-white/5 border border-brand/30" : ""
+                      }`}
+                    >
+                      {gen.thumbnailUrl ? (
+                        <img
+                          src={gen.thumbnailUrl}
+                          alt={gen.prompt}
+                          className="w-10 h-10 rounded-md object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-md bg-gray-800 flex items-center justify-center flex-shrink-0">
+                          {gen.status === "running" ? (
+                            <Loader2 className="w-4 h-4 text-brand animate-spin" />
+                          ) : gen.status === "failed" ? (
+                            <X className="w-4 h-4 text-red-400" />
+                          ) : (
+                            <ImageIcon className="w-4 h-4 text-gray-600" />
+                          )}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-white truncate">{gen.prompt}</p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(gen.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* History Panel */}
+        {/* Full History Panel */}
         {showHistory && (
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
@@ -442,13 +649,14 @@ export default function MeshGeneratorPage() {
             {history.length === 0 ? (
               <p className="text-gray-500 text-sm">No generations yet. Create your first 3D model above!</p>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                 {history.map((gen) => (
                   <button
                     key={gen.id}
                     onClick={() => {
                       if (gen.status === "success") {
                         setSelectedModel(gen);
+                        setShowHistory(false);
                       }
                     }}
                     className={`p-3 bg-white/[0.02] border border-surface-border rounded-xl text-left hover:border-brand/50 transition-colors ${

@@ -22,9 +22,6 @@ import {
   Grid3X3,
   Box,
   Paintbrush,
-  RotateCcw,
-  Move,
-  ZoomIn,
 } from "lucide-react";
 import type { ViewMode } from "@/components/MeshModelViewer";
 
@@ -459,32 +456,15 @@ export default function MeshGeneratorPage() {
 
           {/* Center: 3D Viewer */}
           <div className="space-y-3">
-            <div className="aspect-[4/3] lg:aspect-auto lg:h-[600px] bg-white/[0.02] border border-surface-border rounded-xl overflow-hidden relative group">
+            <div className="aspect-square lg:aspect-auto lg:h-[650px] bg-[#1a1a2e] border border-surface-border rounded-xl overflow-hidden relative">
               {modelUrl ? (
-                <>
-                  <MeshModelViewer
-                    key={`${selectedModel?.id}-${viewerKey}`}
-                    src={modelUrl}
-                    poster={selectedModel?.thumbnailUrl || undefined}
-                    className="w-full h-full"
-                    viewMode={viewMode}
-                  />
-                  {/* Viewer controls hint overlay */}
-                  <div className="absolute bottom-3 left-3 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
-                      <RotateCcw className="w-3 h-3 text-gray-400" />
-                      <span className="text-xs text-gray-400">Drag to orbit</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
-                      <Move className="w-3 h-3 text-gray-400" />
-                      <span className="text-xs text-gray-400">Right-click to pan</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-md">
-                      <ZoomIn className="w-3 h-3 text-gray-400" />
-                      <span className="text-xs text-gray-400">Scroll to zoom</span>
-                    </div>
-                  </div>
-                </>
+                <MeshModelViewer
+                  key={`${selectedModel?.id}-${viewerKey}`}
+                  src={modelUrl}
+                  poster={selectedModel?.thumbnailUrl || undefined}
+                  className="w-full h-full"
+                  viewMode={viewMode}
+                />
               ) : selectedModel?.thumbnailUrl ? (
                 <img
                   src={selectedModel.thumbnailUrl}
@@ -495,7 +475,7 @@ export default function MeshGeneratorPage() {
                 <div className="w-full h-full flex flex-col items-center justify-center text-gray-600">
                   <ImageIcon className="w-16 h-16 mb-3" />
                   <p className="text-sm">Your 3D model will appear here</p>
-                  <p className="text-xs text-gray-700 mt-1">Drag to orbit • Scroll to zoom • Right-click to pan</p>
+                  <p className="text-xs text-gray-700 mt-1">Drag to orbit • Scroll to zoom</p>
                 </div>
               )}
             </div>

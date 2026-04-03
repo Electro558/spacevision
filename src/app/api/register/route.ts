@@ -64,13 +64,24 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Send verification email (non-blocking)
-    sendVerificationEmail(email, token).catch((err) =>
-      console.error("Failed to send verification email:", err)
-    );
+    // Send verification email
+    const emailResult = await sendVerificationEmail(email, token);
+
+    if (!emailResult.success) {
+      console.error("[Register] Email send failed:", emailResult.error);
+      // Account created but email failed — still return success
+      // They can resend from the verify-email page
+      return NextResponse.json(
+        {
+          message: "Account created but verification email could not be sent. You can request a new one.",
+          emailSent: false,
+        },
+        { status: 201 }
+      );
+    }
 
     return NextResponse.json(
-      { message: "Account created. Please check your email to verify." },
+      { message: "Account created. Check your email to verify.", emailSent: true },
       { status: 201 }
     );
   } catch (error) {

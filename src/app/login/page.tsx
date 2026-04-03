@@ -52,9 +52,11 @@ function LoginForm() {
 
         {tokenError && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-lg mb-4 text-sm text-center">
-            {tokenError === "expired-token"
-              ? "Verification link has expired. Please register again."
-              : "Invalid verification link."}
+            {tokenError === "expired-token" ? (
+              <>Verification link has expired. <Link href="/verify-email" className="underline hover:text-red-300">Request a new one</Link>.</>
+            ) : (
+              "Invalid verification link."
+            )}
           </div>
         )}
 

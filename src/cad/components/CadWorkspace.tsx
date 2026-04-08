@@ -3,12 +3,10 @@
 import { useEffect } from "react";
 import { useCad } from "../context/CadContext";
 import { OcctLoadingScreen } from "./OcctLoadingScreen";
-
-// These imports will be added as components are created in later tasks:
-// import { TopToolbar } from "./TopToolbar";        // Task 13
-// import { SketchToolbar } from "./SketchToolbar";  // Task 13
-// import { CadViewport } from "./CadViewport";      // Task 11
-// import { StatusBar } from "./StatusBar";           // Task 14
+import { TopToolbar } from "./TopToolbar";
+import { SketchToolbar } from "./SketchToolbar";
+import { CadViewport } from "./CadViewport";
+import { StatusBar } from "./StatusBar";
 
 export function CadWorkspace() {
   const cad = useCad();
@@ -54,11 +52,8 @@ export function CadWorkspace() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* TopToolbar — placeholder until Task 13 */}
-      <div className="flex h-10 items-center border-b border-gray-800 bg-[#1a1a2e] px-4 text-xs">
-        <span className="font-bold text-indigo-400">SpaceVision CAD</span>
-        <span className="ml-auto rounded bg-green-900/50 px-2 py-0.5 text-green-400">● OCCT Ready</span>
-      </div>
+      <TopToolbar />
+      <SketchToolbar />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Feature tree — left */}
@@ -91,9 +86,9 @@ export function CadWorkspace() {
           ))}
         </div>
 
-        {/* Viewport — placeholder until Task 11 */}
-        <div className="relative flex-1 bg-[#0d0d1a] flex items-center justify-center text-gray-600">
-          <p>3D Viewport (will be replaced by CadViewport in Task 11)</p>
+        {/* 3D Viewport */}
+        <div className="relative flex-1 bg-[#0d0d1a]">
+          <CadViewport />
         </div>
 
         {/* Properties — right */}
@@ -126,11 +121,7 @@ export function CadWorkspace() {
         </div>
       </div>
 
-      {/* StatusBar — placeholder until Task 14 */}
-      <div className="flex h-6 items-center justify-between border-t border-gray-800 bg-[#1a1a2e] px-4 text-xs text-gray-500">
-        <span>{cad.isRebuilding ? "Rebuilding..." : "Ready"} | {cad.project.features.length} Features</span>
-        <span>{cad.project.name}</span>
-      </div>
+      <StatusBar />
     </div>
   );
 }

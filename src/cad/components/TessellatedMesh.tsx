@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import * as THREE from "three";
 import type { TessellationResult } from "../engine/types";
 
@@ -25,6 +25,11 @@ export function TessellatedMesh({ mesh, viewMode }: TessellatedMeshProps) {
     geo.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
     return geo;
   }, [mesh]);
+
+  // Dispose GPU resources on unmount or when geometry changes
+  useEffect(() => {
+    return () => { geometry.dispose(); };
+  }, [geometry]);
 
   return (
     <group>

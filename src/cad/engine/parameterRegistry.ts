@@ -110,9 +110,9 @@ export function evaluateAll(
 
 /**
  * Evaluates a simple math expression with parameter references.
- * Supports: +, -, *, /, (), and parameter names.
+ * Supports: +, -, *, /, (), unary minus, and parameter names.
  *
- * This is a safe evaluator — no arbitrary code execution.
+ * Uses a recursive-descent parser — no eval/Function, CSP-safe.
  */
 export function evaluateExpression(
   expression: string,
@@ -136,23 +136,105 @@ export function evaluateExpression(
     }
   }
 
-  // Validate: only allow numbers, operators, parens, whitespace, decimal points
-  if (!/^[\d\s+\-*/().]+$/.test(expr)) {
-    throw new Error(`Invalid expression: ${expression}`);
-  }
-
-  // Evaluate using Function (safe since we validated the content)
   try {
-    const result = new Function(`return (${expr})`)();
+    const result = parseExpression(expr.trim());
     if (typeof result !== "number" || !isFinite(result)) {
       throw new Error(`Expression "${expression}" did not produce a valid number`);
     }
     return result;
-  } catch {
-    throw new Error(`Failed to evaluate expression: ${expression}`);
+  } catch (err: any) {
+    throw new Error(`Failed to evaluate expression: ${expression} — ${err.message}`);
   }
 }
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Recursive-descent parser for arithmetic expressions.
+ * Grammar:
+ *   expr     → term (('+' | '-') term)*
+ *   term     → unary (('*' | '/') unary)*
+ *   unary    → ('-' unary) | primary
+ *   primary  → NUMBER | '(' expr ')'
+ */
+function parseExpression(input: string): number {
+  let pos = 0;
+
+  function skipWhitespace() {
+    while (pos < input.length && input[pos] === " ") pos++;
+  }
+
+  function parseExpr(): number {
+    let left = parseTerm();
+    skipWhitespace();
+    while (pos < input.length && (input[pos] === "+" || input[pos] === "-")) {
+      const op = input[pos++];
+      const right = parseTerm();
+      left = op === "+" ? left + right : left - right;
+      skipWhitespace();
+    }
+    return left;
+  }
+
+  function parseTerm(): number {
+    let left = parseUnary();
+    skipWhitespace();
+    while (pos < input.length && (input[pos] === "*" || input[pos] === "/")) {
+      const op = input[pos++];
+      const right = parseUnary();
+      left = op === "*" ? left * right : left / right;
+      skipWhitespace();
+    }
+    return left;
+  }
+
+  function parseUnary(): number {
+    skipWhitespace();
+    if (pos < input.length && input[pos] === "-") {
+      pos++;
+      return -parseUnary();
+    }
+    if (pos < input.length && input[pos] === "+") {
+      pos++;
+      return parseUnary();
+    }
+    return parsePrimary();
+  }
+
+  function parsePrimary(): number {
+    skipWhitespace();
+    if (pos < input.length && input[pos] === "(") {
+      pos++; // skip '('
+      const val = parseExpr();
+      skipWhitespace();
+      if (pos >= input.length || input[pos] !== ")") {
+        throw new Error("Missing closing parenthesis");
+      }
+      pos++; // skip ')'
+      return val;
+    }
+
+    // Parse number (integer or decimal)
+    const start = pos;
+    while (pos < input.length && (isDigit(input[pos]) || input[pos] === ".")) {
+      pos++;
+    }
+    if (pos === start) {
+      throw new Error(`Unexpected character at position ${pos}: '${input[pos] ?? "EOF"}'`);
+    }
+    return parseFloat(input.slice(start, pos));
+  }
+
+  function isDigit(ch: string): boolean {
+    return ch >= "0" && ch <= "9";
+  }
+
+  const result = parseExpr();
+  skipWhitespace();
+  if (pos !== input.length) {
+    throw new Error(`Unexpected character at position ${pos}: '${input[pos]}'`);
+  }
+  return result;
 }

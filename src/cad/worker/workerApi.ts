@@ -54,33 +54,43 @@ export class OcctWorkerApi {
 
     // Send init command and wait for ready
     return new Promise((resolve, reject) => {
-      // Listen for the __init__ ready message
-      const initHandler = (resp: WorkerResponse) => {
+      let initComplete = false;
+
+      // Temporarily intercept messages for init, then restore normal handler
+      this.worker!.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        const resp = e.data;
+
+        // Once init is complete, use normal handler for all messages
+        if (initComplete) {
+          this.handleMessage(resp);
+          return;
+        }
+
         if (resp.id === "__init__" && resp.type === "ready") {
           const payload = resp.payload as ReadyPayload;
           this.onReady?.(payload.version);
+          initComplete = true;
+          // Restore normal message handler
+          this.worker!.onmessage = (ev: MessageEvent<WorkerResponse>) => {
+            this.handleMessage(ev.data);
+          };
           resolve();
-          return true; // handled
+          return;
         }
         if (resp.id === "__init__" && resp.type === "progress") {
           const payload = resp.payload as ProgressPayload;
           this.onProgress?.(payload.percent, payload.message);
-          return true;
+          return;
         }
         if (resp.id === "__init__" && resp.type === "error") {
           const payload = resp.payload as ErrorPayload;
+          initComplete = true;
           reject(new Error(payload.message));
-          return true;
+          return;
         }
-        return false;
-      };
 
-      // Temporarily intercept messages for init
-      const originalHandler = this.worker!.onmessage;
-      this.worker!.onmessage = (e: MessageEvent<WorkerResponse>) => {
-        if (!initHandler(e.data)) {
-          this.handleMessage(e.data);
-        }
+        // Non-init messages during init: forward to normal handler
+        this.handleMessage(resp);
       };
 
       this.send({ id: "__init__", type: "init", payload: {} });

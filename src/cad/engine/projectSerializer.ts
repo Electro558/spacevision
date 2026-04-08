@@ -57,6 +57,14 @@ export function deserializeProject(json: string): CadProject {
     throw new Error("Invalid .svcp file: missing or invalid features array");
   }
 
+  // Ensure required fields exist with sensible defaults
+  if (!data.name || typeof data.name !== "string") data.name = "Untitled";
+  if (!data.units || typeof data.units !== "string") data.units = "mm";
+  if (!data.parameters || typeof data.parameters !== "object") data.parameters = {};
+  if (!data.metadata || typeof data.metadata !== "object") {
+    data.metadata = { created: new Date().toISOString(), modified: new Date().toISOString(), author: "", material: "" };
+  }
+
   // Version migration would go here for future versions
 
   return data as CadProject;

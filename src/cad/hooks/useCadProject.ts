@@ -24,6 +24,7 @@ import {
   createEmptyProject,
   saveToLocalStorage,
 } from "../engine/projectSerializer";
+import { removeFeature as removeFeatureFromTree } from "../engine/featureTree";
 
 export interface CadProjectState {
   project: CadProject;
@@ -98,65 +99,70 @@ export function useCadProject(
   // Auto-save debounce
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const commitToHistory = useCallback(() => {
-    historyRef.current = pushState(historyRef.current, {
-      features: project.features,
-      parameters: project.parameters,
-      selectedFeatureId: uiState.selectedFeatureId,
-    });
-  }, [project.features, project.parameters, uiState.selectedFeatureId]);
-
   const requestRebuild = useCallback(() => {
     setNeedsRebuild(true);
   }, []);
 
   // Debounced auto-save
-  const scheduleSave = useCallback(() => {
+  const scheduleSave = useCallback((proj: CadProject) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveToLocalStorage(project);
+      saveToLocalStorage(proj);
     }, 2000);
-  }, [project]);
+  }, []);
+
+  /**
+   * Helper: update project state, commit the NEW state to history, and trigger rebuild.
+   * This fixes the stale-state bug where commitToHistory() ran before setProject flushed.
+   */
+  const updateProjectWithHistory = useCallback(
+    (updater: (prev: CadProject) => CadProject) => {
+      setProject((prev) => {
+        const next = updater(prev);
+        historyRef.current = pushState(historyRef.current, {
+          features: next.features,
+          parameters: next.parameters,
+          selectedFeatureId: uiState.selectedFeatureId,
+        });
+        scheduleSave(next);
+        return next;
+      });
+      requestRebuild();
+    },
+    [uiState.selectedFeatureId, requestRebuild, scheduleSave]
+  );
 
   const addFeature = useCallback(
     (feature: Feature) => {
-      setProject((prev) => ({
+      updateProjectWithHistory((prev) => ({
         ...prev,
         features: [...prev.features, feature],
       }));
-      commitToHistory();
-      requestRebuild();
-      scheduleSave();
     },
-    [commitToHistory, requestRebuild, scheduleSave]
+    [updateProjectWithHistory]
   );
 
   const removeFeature = useCallback(
     (featureId: string) => {
-      setProject((prev) => ({
+      updateProjectWithHistory((prev) => ({
         ...prev,
-        features: prev.features.filter((f) => f.id !== featureId),
+        // Use featureTree's removeFeature which cascades to dependent extrudes
+        features: removeFeatureFromTree(prev.features, featureId),
       }));
-      commitToHistory();
-      requestRebuild();
-      scheduleSave();
     },
-    [commitToHistory, requestRebuild, scheduleSave]
+    [updateProjectWithHistory]
   );
 
   const updateFeature = useCallback(
     (featureId: string, updates: Partial<Feature>) => {
-      setProject((prev) => ({
+      updateProjectWithHistory((prev) => ({
         ...prev,
         features: prev.features.map((f) =>
           f.id === featureId ? ({ ...f, ...updates } as Feature) : f
         ),
       }));
-      commitToHistory();
-      requestRebuild();
-      scheduleSave();
     },
-    [commitToHistory, requestRebuild, scheduleSave]
+    [updateProjectWithHistory]
   );
 
   const undo = useCallback(() => {
@@ -199,16 +205,10 @@ export function useCadProject(
     setProjectName: (name) =>
       setProject((prev) => ({ ...prev, name })),
     setFeatures: (features) => {
-      setProject((prev) => ({ ...prev, features }));
-      commitToHistory();
-      requestRebuild();
-      scheduleSave();
+      updateProjectWithHistory((prev) => ({ ...prev, features }));
     },
     setParameters: (parameters) => {
-      setProject((prev) => ({ ...prev, parameters }));
-      commitToHistory();
-      requestRebuild();
-      scheduleSave();
+      updateProjectWithHistory((prev) => ({ ...prev, parameters }));
     },
     addFeature,
     removeFeature,
@@ -237,6 +237,11 @@ export function useCadProject(
     requestRebuild,
     setMeshes,
     setIsRebuilding,
-    save: () => saveToLocalStorage(project),
+    save: () => {
+      setProject((prev) => {
+        saveToLocalStorage(prev);
+        return prev;
+      });
+    },
   };
 }

@@ -165,7 +165,7 @@ export function updateFeature(
   updates: Partial<Feature>
 ): Feature[] {
   return features.map((f) =>
-    f.id === featureId ? { ...f, ...updates } : f
+    f.id === featureId ? ({ ...f, ...updates } as Feature) : f
   );
 }
 

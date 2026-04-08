@@ -2,9 +2,30 @@
 
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import * as THREE from "three";
 import type { Sketch, SketchPlane } from "../engine/types";
+
+/**
+ * Helper component that renders a line from an array of Vector3 points.
+ * Uses imperative geometry updates to avoid R3F bufferAttribute typing issues.
+ */
+function SketchLine({ points, color, opacity = 1 }: { points: THREE.Vector3[]; color: string; opacity?: number }) {
+  const ref = useRef<THREE.BufferGeometry>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const positions = new Float32Array(points.flatMap((p) => [p.x, p.y, p.z]));
+    ref.current.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  }, [points]);
+
+  return (
+    <line>
+      <bufferGeometry ref={ref} />
+      <lineBasicMaterial color={color} linewidth={2} opacity={opacity} transparent={opacity < 1} />
+    </line>
+  );
+}
 
 interface SketchOverlayProps {
   sketch: Sketch;
@@ -129,36 +150,12 @@ export function SketchOverlay({
     <group>
       {/* Existing sketch entities */}
       {linePoints.map((pts, i) => (
-        <line key={i}>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={pts.length}
-              array={new Float32Array(pts.flatMap((p) => [p.x, p.y, p.z]))}
-              itemSize={3}
-            />
-          </bufferGeometry>
-          <lineBasicMaterial color="#22d3ee" linewidth={2} />
-        </line>
+        <SketchLine key={i} points={pts} color="#22d3ee" />
       ))}
 
       {/* Preview during drawing */}
       {previewLine && (
-        <line>
-          <bufferGeometry>
-            <bufferAttribute
-              attach="attributes-position"
-              count={previewLine.length}
-              array={
-                new Float32Array(
-                  previewLine.flatMap((p) => [p.x, p.y, p.z])
-                )
-              }
-              itemSize={3}
-            />
-          </bufferGeometry>
-          <lineBasicMaterial color="#f59e0b" linewidth={1} opacity={0.7} transparent />
-        </line>
+        <SketchLine points={previewLine} color="#f59e0b" opacity={0.7} />
       )}
 
       {/* Sketch points */}

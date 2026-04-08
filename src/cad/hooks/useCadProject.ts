@@ -96,7 +96,7 @@ export function useCadProject(
   );
 
   // Auto-save debounce
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const commitToHistory = useCallback(() => {
     historyRef.current = pushState(historyRef.current, {
@@ -149,7 +149,7 @@ export function useCadProject(
       setProject((prev) => ({
         ...prev,
         features: prev.features.map((f) =>
-          f.id === featureId ? { ...f, ...updates } : f
+          f.id === featureId ? ({ ...f, ...updates } as Feature) : f
         ),
       }));
       commitToHistory();

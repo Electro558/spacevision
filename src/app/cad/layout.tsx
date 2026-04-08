@@ -11,7 +11,7 @@ export default function CadLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-[#0d0d1a] text-white">
+    <div className="h-[calc(100vh-57px)] mt-[57px] overflow-hidden bg-[#0d0d1a] text-white">
       {children}
     </div>
   );

@@ -758,7 +758,60 @@ export default function GeneratePage() {
           }
         });
     }
-  }, [session]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.email]);
+
+  // Import mesh from Mesh Generator when navigating with ?import=mesh
+  const meshImportDone = useRef(false);
+  useEffect(() => {
+    if (meshImportDone.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("import") !== "mesh") return;
+    const raw = sessionStorage.getItem("importedMesh");
+    if (!raw) return;
+    meshImportDone.current = true;
+    sessionStorage.removeItem("importedMesh");
+
+    (async () => {
+      try {
+        const meshInfo = JSON.parse(raw);
+        setChatMessages(prev => [...prev,
+          { role: "ai", text: `Importing mesh "${meshInfo.prompt}"...` }
+        ]);
+
+        const res = await fetch(meshInfo.proxyUrl);
+        if (!res.ok) throw new Error(`Failed to fetch model: HTTP ${res.status}`);
+        const blob = await res.blob();
+        const file = new File([blob], `${meshInfo.prompt || "mesh"}.glb`, { type: "model/gltf-binary" });
+
+        const { geometry, name } = await loadFile(file);
+        const objId = newId();
+        importedGeometries.current.set(objId, geometry);
+
+        const newObj = createObject('imported' as SceneObject["type"], {
+          id: objId,
+          name: meshInfo.prompt || name,
+          position: [0, 0, 0],
+        });
+
+        const updated = [...objects, newObj];
+        setObjects(updated);
+        setSelectedIds([objId]);
+        pushHistory(updated, objId);
+        setModelName(meshInfo.prompt || "Imported Mesh");
+
+        setChatMessages(prev => [...prev,
+          { role: "ai", text: `Imported "${meshInfo.prompt}" from Mesh Generator. You can now edit it with AI or manual tools.` }
+        ]);
+      } catch (err: any) {
+        console.error("Mesh import error:", err);
+        setChatMessages(prev => [...prev,
+          { role: "ai", text: `Failed to import mesh: ${err.message}` }
+        ]);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-save every 30 seconds if model has been saved once and scene changed
   const lastSavedRef = useRef<string>("");

@@ -91,7 +91,8 @@ export default function MeshGeneratorPage() {
           setCredits(data.credits || { used: 0, max: 3, remaining: 3 });
         });
     }
-  }, [session]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.email]);
 
   // Reset view mode when selecting a new model
   useEffect(() => {

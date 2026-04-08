@@ -24,6 +24,7 @@
     "manifold-3d": "^3.4.0",
     "next": "^15.3.0",
     "next-auth": "^5.0.0-beta.30",
+    "opencascade.js": "^2.0.0-beta.b5ff984",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^3.8.1",

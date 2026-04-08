@@ -2,15 +2,97 @@
 
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
+import { useRef, useCallback, useEffect, useMemo } from "react";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import * as THREE from "three";
 import { useCad } from "../context/CadContext";
+import { useSketchMode } from "../hooks/useSketchMode";
 import { TessellatedMesh } from "./TessellatedMesh";
 import { SketchOverlay } from "./SketchOverlay";
 import { ViewCubeOverlay, VIEW_CAMERA_POSITIONS } from "./ViewCube";
-import type { ViewPreset, SketchFeature } from "../engine/types";
+import type { ViewPreset, SketchFeature, SketchPlane, Sketch } from "../engine/types";
+
+/**
+ * Converts a 3D intersection point to 2D sketch-plane coordinates.
+ */
+function worldToSketch2D(plane: SketchPlane, point: THREE.Vector3): { x: number; y: number } {
+  switch (plane) {
+    case "XY": return { x: point.x, y: point.y };
+    case "XZ": return { x: point.x, y: point.z };
+    case "YZ": return { x: point.y, y: point.z };
+  }
+}
+
+/**
+ * Returns the Three.js Plane for raycasting based on the sketch plane.
+ */
+function getSketchPlane3D(plane: SketchPlane): THREE.Plane {
+  switch (plane) {
+    case "XY": return new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    case "XZ": return new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    case "YZ": return new THREE.Plane(new THREE.Vector3(1, 0, 0), 0);
+  }
+}
+
+/**
+ * Invisible plane mesh for raycasting sketch clicks.
+ * Only visible (to raycaster) when in sketch mode.
+ */
+function SketchPlaneHelper({
+  plane,
+  onSketchClick,
+  onSketchMove,
+}: {
+  plane: SketchPlane;
+  onSketchClick: (x: number, y: number) => void;
+  onSketchMove: (x: number, y: number) => void;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const raycaster = useMemo(() => new THREE.Raycaster(), []);
+  const sketchPlane = useMemo(() => getSketchPlane3D(plane), [plane]);
+  const { camera, gl } = useThree();
+  const intersectPoint = useMemo(() => new THREE.Vector3(), []);
+
+  // Raycast against the infinite sketch plane
+  const raycastToPlane = useCallback(
+    (event: { clientX: number; clientY: number }): { x: number; y: number } | null => {
+      const rect = gl.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      raycaster.setFromCamera(mouse, camera);
+      const hit = raycaster.ray.intersectPlane(sketchPlane, intersectPoint);
+      if (!hit) return null;
+      return worldToSketch2D(plane, hit);
+    },
+    [camera, gl, raycaster, sketchPlane, intersectPoint, plane]
+  );
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+
+    const handleClick = (e: MouseEvent) => {
+      const pt = raycastToPlane(e);
+      if (pt) onSketchClick(pt.x, pt.y);
+    };
+
+    const handleMove = (e: MouseEvent) => {
+      const pt = raycastToPlane(e);
+      if (pt) onSketchMove(pt.x, pt.y);
+    };
+
+    canvas.addEventListener("click", handleClick);
+    canvas.addEventListener("mousemove", handleMove);
+    return () => {
+      canvas.removeEventListener("click", handleClick);
+      canvas.removeEventListener("mousemove", handleMove);
+    };
+  }, [gl, raycastToPlane, onSketchClick, onSketchMove]);
+
+  return null; // No visible mesh needed — we raycast against math plane
+}
 
 function CadScene() {
   const cad = useCad();
@@ -33,12 +115,43 @@ function CadScene() {
     return () => window.removeEventListener("cad-set-view", handler);
   }, [camera]);
 
-  // Get active sketch for overlay rendering
-  const activeSketch = cad.uiState.activeSketchId
+  // Get active sketch for overlay rendering and sketch mode
+  const activeSketchFeature = cad.uiState.activeSketchId
     ? cad.project.features.find(
         (f) => f.id === cad.uiState.activeSketchId && f.type === "sketch"
       ) as SketchFeature | undefined
     : undefined;
+
+  const activeSketch = activeSketchFeature?.sketch ?? null;
+
+  // Callback to update sketch entities in the feature tree
+  const handleUpdateSketch = useCallback(
+    (updatedSketch: Sketch) => {
+      if (!activeSketchFeature) return;
+      cad.updateFeature(activeSketchFeature.id, {
+        sketch: updatedSketch,
+      } as Partial<SketchFeature>);
+    },
+    [activeSketchFeature, cad]
+  );
+
+  // Wire up sketch mode interaction
+  const sketchMode = useSketchMode(
+    activeSketch,
+    cad.uiState.activeTool,
+    handleUpdateSketch
+  );
+
+  // Cancel sketch drawing on Escape (also handled by CadWorkspace, but this cancels the drawing state)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && sketchMode.isDrawing) {
+        sketchMode.cancel();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sketchMode]);
 
   return (
     <>
@@ -65,7 +178,7 @@ function CadScene() {
         />
       )}
 
-      {/* Origin planes (subtle) */}
+      {/* Origin axes */}
       <axesHelper args={[5]} />
 
       {/* Tessellated meshes from OCCT */}
@@ -79,16 +192,35 @@ function CadScene() {
 
       {/* Sketch overlay (when in sketch mode) */}
       {activeSketch && (
-        <SketchOverlay sketch={activeSketch.sketch} />
+        <SketchOverlay
+          sketch={activeSketch}
+          previewPoints={sketchMode.currentPoints.length >= 1 ? sketchMode.currentPoints : undefined}
+          activeTool={cad.uiState.activeTool}
+        />
       )}
 
-      {/* Orbit controls */}
+      {/* Sketch plane raycaster (only active in sketch mode) */}
+      {cad.uiState.sketchModeActive && activeSketch && (
+        <SketchPlaneHelper
+          plane={activeSketch.plane}
+          onSketchClick={sketchMode.handleClick}
+          onSketchMove={sketchMode.handleMouseMove}
+        />
+      )}
+
+      {/* Semi-transparent sketch plane indicator */}
+      {cad.uiState.sketchModeActive && activeSketch && (
+        <SketchPlaneIndicator plane={activeSketch.plane} />
+      )}
+
+      {/* Orbit controls — disable rotation during sketch drawing */}
       <OrbitControls
         ref={controlsRef}
         enableDamping
         dampingFactor={0.1}
         minDistance={1}
         maxDistance={500}
+        enableRotate={!cad.uiState.sketchModeActive}
       />
 
       {/* View gizmo */}
@@ -99,13 +231,36 @@ function CadScene() {
   );
 }
 
+/**
+ * Visual indicator showing which plane is active for sketching.
+ */
+function SketchPlaneIndicator({ plane }: { plane: SketchPlane }) {
+  const rotation = useMemo(() => {
+    switch (plane) {
+      case "XY": return new THREE.Euler(0, 0, 0);
+      case "XZ": return new THREE.Euler(-Math.PI / 2, 0, 0);
+      case "YZ": return new THREE.Euler(0, Math.PI / 2, 0);
+    }
+  }, [plane]);
+
+  return (
+    <mesh rotation={rotation}>
+      <planeGeometry args={[200, 200]} />
+      <meshBasicMaterial
+        color="#6366f1"
+        transparent
+        opacity={0.03}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
+  );
+}
+
 export function CadViewport() {
   const cad = useCad();
 
   const handleSetView = useCallback((preset: ViewPreset) => {
-    // NOTE: Direct camera manipulation requires accessing the R3F camera ref.
-    // This will be passed down from CadScene. For now, we dispatch a custom event
-    // that CadScene listens for.
     window.dispatchEvent(
       new CustomEvent("cad-set-view", { detail: { preset } })
     );
@@ -135,9 +290,16 @@ export function CadViewport() {
       {/* View preset buttons overlay */}
       <ViewCubeOverlay onSetView={handleSetView} />
 
+      {/* Sketch mode indicator */}
+      {cad.uiState.sketchModeActive && (
+        <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-amber-900/80 px-3 py-1 text-xs text-amber-200">
+          Sketch Mode — Click to draw, Escape to cancel
+        </div>
+      )}
+
       {/* Rebuilding indicator */}
       {cad.isRebuilding && (
-        <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded bg-indigo-900/80 px-3 py-1 text-xs text-indigo-200">
+        <div className="absolute left-1/2 top-10 -translate-x-1/2 rounded bg-indigo-900/80 px-3 py-1 text-xs text-indigo-200">
           Rebuilding geometry...
         </div>
       )}

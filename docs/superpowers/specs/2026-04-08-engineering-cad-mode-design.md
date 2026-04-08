@@ -7,7 +7,7 @@ A professional parametric CAD system built into SpaceVision as a dedicated `/cad
 ## Decisions
 
 - **Architecture**: OpenCascade.js (WASM) as the core BREP geometry kernel — provides battle-tested boolean operations, fillets, chamfers, sweeps, lofts, and native STEP/IGES support.
-- **Route**: Separate `/cad` page with purpose-built UI, independent from Creative Studio.
+- **Route**: Separate `/cad` page with purpose-built UI, independent from Creative Studio. The existing Creative Studio (`/generate`) and its CSG system (`cadStore.ts`, `csgEngine.ts`, `CADViewport.tsx`) remain untouched — they serve artistic/visual 3D work. The new `/cad` route is a completely separate system with its own components, state, and OCCT kernel. No code is shared between them initially; shared utilities (e.g., R3F helpers) can be extracted later if patterns converge.
 - **Workflow**: Sketch-based parametric modeling — select plane → draw 2D sketch → add constraints → apply 3D feature → modify.
 - **File formats**: Full import/export suite — STEP, IGES, STL, OBJ, GLB, DXF, PDF, plus native `.svcp` project format.
 - **AI**: Claude tool-use integration — reads feature tree JSON, has tools to create sketches, add constraints, apply operations.
@@ -24,7 +24,8 @@ Three layers:
 - **Feature Tree Panel** (left sidebar): Ordered list of operations. Click to select/edit. Drag to reorder. Right-click for rollback-to-here. Shows constraint status icons. Parameters section below with name/value/expression columns.
 - **Sketch Mode Overlay**: Activates when user enters sketch mode on a plane or face. Camera snaps to normal view. 2D drawing tools appear in contextual toolbar. Constraint indicators rendered as overlay symbols.
 - **Properties Inspector** (right sidebar): Context-sensitive. Shows selected feature's editable properties — dimensions, references, material. Includes AI chat input at bottom.
-- **Top Toolbar**: Menu bar (File, Edit, Sketch, Features, Assembly, View) + contextual sketch tools strip.
+- **Top Toolbar**: Menu bar (File, Edit, Sketch, Features, View) + contextual sketch tools strip. (Assembly mode is a future feature — not in scope for v1.)
+- **OCCT Loading Screen**: Full-page overlay on first `/cad` visit while the ~15-25MB WASM bundle downloads. Shows progress bar, estimated time, and caches aggressively so subsequent visits load instantly.
 - **Status Bar**: Constraint solve status, auto-save indicator, version name, feature count.
 
 ### 2. CAD Engine (TypeScript)
@@ -37,7 +38,7 @@ Three layers:
 
 ### 3. Geometry Kernel (OpenCascade.js WASM)
 
-Loaded lazily on first visit to `/cad`. ~15-25MB WASM bundle, cached by browser after first load.
+Loaded lazily on first visit to `/cad`. ~15-25MB WASM bundle, cached by browser after first load. All OCCT operations run in a **Web Worker** to avoid blocking the UI thread — this covers BREP rebuilds (which replay the entire feature tree), HLR for technical drawings, and STEP/IGES import parsing. The main thread sends operation requests to the worker and receives tessellated geometry back for rendering.
 
 **BREP Operations**:
 - **Extrude** (BRepPrimAPI_MakePrism): Blind depth, through-all, up-to-face, mid-plane. Add or cut.
@@ -101,6 +102,12 @@ All dimensional constraints accept expressions referencing parameters (e.g., `= 
 - DOF (degrees of freedom) tracked per sketch: `DOF = 2 * num_points - num_constraints`.
 - Real-time solve on entity drag — solver runs on each mouse move, repositioning geometry to satisfy constraints.
 - Status indicators: fully constrained (green), under-constrained (yellow, shows remaining DOF), over-constrained (red, highlights conflicting constraints).
+
+### Error Handling & Recovery
+
+- **Max iterations exceeded**: If solver fails to converge after 200 iterations, the sketch is marked as "unsolved." The last valid state is preserved, the offending constraint is highlighted in red, and a toast notification explains the issue. User can undo the constraint or adjust values.
+- **Contradictory constraints**: When adding a constraint that creates an over-constrained state, the system detects it immediately (DOF < 0), rejects the constraint, and shows an error indicating which constraints conflict.
+- **Recovery**: User can always undo to the last solved state. The "constraint status" panel in the properties inspector lists all constraints with their status, letting users identify and delete problematic ones.
 
 ## Native Project Format (.svcp)
 
@@ -167,14 +174,7 @@ SpaceVision CAD Project — JSON-based, stores complete parametric state:
     "author": "user@example.com",
     "material": "Aluminum 6061-T6"
   },
-  "versionHistory": [
-    {
-      "id": "v1",
-      "name": "Initial design",
-      "timestamp": "2026-04-08T12:00:00Z",
-      "snapshot": "..."
-    }
-  ]
+  "versionHistory": "stored in database (CadVersion table), not embedded in .svcp files"
 }
 ```
 
@@ -214,12 +214,22 @@ Claude receives the full `.svcp` JSON as context when the user sends a message. 
 5. Viewport updates after each operation
 6. Claude's text response appears in chat explaining what was done
 
+### AI Error Handling
+
+When a tool call fails mid-sequence (e.g., Claude issues 5 operations but #3 produces invalid geometry):
+
+1. **Stop execution** at the failing operation. Do not continue with subsequent tool calls since they likely depend on the failed one.
+2. **Roll back** all operations from the current AI sequence — restore the feature tree to the state before the AI started.
+3. **Report the error** to Claude with the failure details (which operation, what went wrong, the OCCT error message).
+4. **Claude retries** with a corrected approach, having learned from the failure.
+5. **User sees** a notification: "AI operation failed — rolled back. Retrying..." If the retry also fails, the user is shown the error and can intervene manually.
+
 ## Version Control
 
 ### Auto-Save
 
 - Snapshot created after every feature operation (debounced 2s).
-- Stored as feature tree JSON diff from previous snapshot.
+- Stored as full feature tree JSON snapshots (matching CadVersion schema — simpler than diffs, enables instant rollback without replay).
 - Unlimited undo/redo navigates snapshot history.
 - Snapshots stored in database, associated with user and project.
 
@@ -235,7 +245,7 @@ Claude receives the full `.svcp` JSON as context when the user sends a message. 
 - Each branch has independent feature tree and version history.
 - Default branch is "main."
 - Compare branches: side-by-side viewport rendering, feature tree diff view.
-- Merge: apply feature additions/modifications from source branch onto target. Conflicts (same feature modified differently) flagged for manual resolution.
+- Merge: apply feature additions/modifications from source branch onto target. Conflicts (same feature modified differently) resolved via a merge dialog that shows: the feature in both branches side-by-side, options to "keep source," "keep target," or "keep both" (appends source feature after target's version). User must resolve all conflicts before merge completes. Can abort merge at any time. Detailed merge conflict UX will be specified in Phase 4's own spec.
 
 ### Storage
 
@@ -281,7 +291,7 @@ Claude receives the full `.svcp` JSON as context when the user sends a message. 
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ SpaceVision CAD │ File Edit Sketch Features Assembly View    │ ● OCCT Ready │ AI Assist │
+│ SpaceVision CAD │ File Edit Sketch Features View             │ ● OCCT Ready │ AI Assist │
 ├──────────────────────────────────────────────────────────────┤
 │ Sketch: Line │ Arc │ Circle │ Rect │ Spline ││ Dim │ Constraint │ Trim │ Mirror │ Pattern │
 ├────────────┬─────────────────────────────────┬───────────────┤
@@ -362,32 +372,40 @@ Claude receives the full `.svcp` JSON as context when the user sends a message. 
 ## Database Schema Additions
 
 ```prisma
+// Add to existing User model:
+//   cadProjects CadProject[]
+
 model CadProject {
-  id          String   @id @default(cuid())
-  userId      String
-  name        String
-  units       String   @default("mm")
-  currentBranch String @default("main")
-  featureTree Json
-  parameters  Json
-  metadata    Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
-  versions    CadVersion[]
+  id            String       @id @default(cuid())
+  userId        String
+  name          String
+  units         String       @default("mm")
+  currentBranch String       @default("main")
+  featureTree   Json
+  parameters    Json
+  metadata      Json?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions      CadVersion[]
+
+  @@index([userId])
 }
 
 model CadVersion {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
   projectId       String
-  branch          String   @default("main")
+  branch          String       @default("main")
   name            String?
   featureTreeJson Json
   parentVersionId String?
-  createdAt       DateTime @default(now())
-  project         CadProject @relation(fields: [projectId], references: [id])
-  parent          CadVersion? @relation("VersionParent", fields: [parentVersionId], references: [id])
+  createdAt       DateTime     @default(now())
+  project         CadProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent          CadVersion?  @relation("VersionParent", fields: [parentVersionId], references: [id], onDelete: SetNull)
   children        CadVersion[] @relation("VersionParent")
+
+  @@index([projectId])
+  @@index([branch])
 }
 ```
 
@@ -395,6 +413,6 @@ model CadVersion {
 
 1. **OCCT WASM bundle size**: 15-25MB initial download. Mitigated by lazy loading, aggressive caching, and a loading screen with progress indicator.
 2. **Constraint solver robustness**: Newton-Raphson can diverge on poorly-conditioned systems. LM fallback helps. May need to limit maximum iterations and report unsolvable states gracefully.
-3. **HLR for technical drawings**: OCCT's hidden line removal can be slow on complex models. May need to run in a Web Worker to avoid blocking the UI.
+3. **HLR for technical drawings**: OCCT's hidden line removal can be slow on complex models even in the Web Worker. May need progress indication and cancellation support for large models.
 4. **STEP/IGES fidelity**: Some STEP files from other CAD systems use advanced surface types that OCCT handles well, but edge cases exist. Testing with real-world files essential.
 5. **Feature tree rebuild performance**: Modifying an early feature requires replaying all subsequent features through OCCT. For complex models (50+ features), this could take seconds. Consider caching intermediate BREP states.

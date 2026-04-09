@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useCallback, type ReactNode } from "react";
 import { useCadProject, type CadProjectState } from "../hooks/useCadProject";
 import { useOcctWorker, type OcctStatus } from "../hooks/useOcctWorker";
 import type { CadProject } from "../engine/types";
@@ -10,6 +10,7 @@ interface CadContextValue extends CadProjectState {
   occtLoadProgress: number;
   occtLoadMessage: string;
   occtError: string | null;
+  exportProject: (format: "step" | "stl") => Promise<void>;
 }
 
 const CadCtx = createContext<CadContextValue | null>(null);
@@ -55,12 +56,34 @@ export function CadProvider({
     worker.status,
   ]);
 
+  const exportProject = useCallback(
+    async (format: "step" | "stl") => {
+      const result = await worker.exportShape(
+        format,
+        projectState.project.features,
+        projectState.project.parameters
+      );
+      if (!result) return;
+
+      const mimeType = format === "step" ? "application/step" : "application/sla";
+      const blob = new Blob([result.data], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${projectState.project.name}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    [worker, projectState.project]
+  );
+
   const value: CadContextValue = {
     ...projectState,
     occtStatus: worker.status,
     occtLoadProgress: worker.loadProgress,
     occtLoadMessage: worker.loadMessage,
     occtError: worker.error,
+    exportProject,
   };
 
   return <CadCtx.Provider value={value}>{children}</CadCtx.Provider>;

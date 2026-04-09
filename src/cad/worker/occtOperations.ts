@@ -1,6 +1,6 @@
 // src/cad/worker/occtOperations.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, Parameter } from "../engine/types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, Parameter } from "../engine/types";
 
 /**
  * Resolves a value that may be a number or a "$paramName" reference.
@@ -94,6 +94,33 @@ export function buildSketchWires(
       ).Edge();
       const circleWire = new oc.BRepBuilderAPI_MakeWire_2(circleEdge).Wire();
       wires.push(circleWire);
+    } else if (entity.type === "arc") {
+      const center = pointMap.get(entity.centerId);
+      const start = pointMap.get(entity.startId);
+      const end = pointMap.get(entity.endId);
+      if (!center || !start || !end) continue;
+      const r = resolveValue(entity.radius, parameters);
+
+      // Compute a midpoint on the arc for GC_MakeArcOfCircle
+      const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+      const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+      let sweep = endAngle - startAngle;
+      while (sweep > Math.PI) sweep -= 2 * Math.PI;
+      while (sweep < -Math.PI) sweep += 2 * Math.PI;
+      const midAngle = startAngle + sweep / 2;
+      const midX = center.x + Math.cos(midAngle) * r;
+      const midY = center.y + Math.sin(midAngle) * r;
+
+      const startPt = to3D(start.x, start.y);
+      const midPt = to3D(midX, midY);
+      const endPt = to3D(end.x, end.y);
+
+      const arcCurve = new oc.GC_MakeArcOfCircle_1(startPt, midPt, endPt).Value();
+      const arcEdge = new oc.BRepBuilderAPI_MakeEdge_8(
+        new oc.Handle_Geom_Curve_2(arcCurve.get())
+      ).Edge();
+      const arcWire = new oc.BRepBuilderAPI_MakeWire_2(arcEdge).Wire();
+      wires.push(arcWire);
     } else if (entity.type === "line") {
       // Single lines don't form closed wires by themselves.
       // For Phase 1, we only extrude closed profiles (rectangles, circles).
@@ -199,6 +226,241 @@ export function performExtrude(
 }
 
 /**
+ * Performs a revolve operation on sketch profiles around an axis.
+ * Returns the resulting OCCT shape.
+ */
+export function performRevolve(
+  oc: any,
+  sketch: SketchFeature["sketch"],
+  revolve: RevolveFeature,
+  parameters: Record<string, Parameter>,
+  currentShape: any | null
+): any {
+  const wires = buildSketchWires(oc, sketch, parameters);
+  if (wires.length === 0) {
+    throw new Error(`No closed profiles found in sketch for revolve "${revolve.name}"`);
+  }
+
+  const angleDeg = resolveValue(revolve.angle, parameters);
+  const angleRad = (angleDeg * Math.PI) / 180;
+
+  // Determine the revolution axis origin and direction
+  const origin = new oc.gp_Pnt_3(0, 0, 0);
+  let axisDir: any;
+
+  switch (revolve.axis) {
+    case "x":
+      axisDir = new oc.gp_Dir_4(1, 0, 0);
+      break;
+    case "y":
+      axisDir = new oc.gp_Dir_4(0, 1, 0);
+      break;
+    case "z":
+      axisDir = new oc.gp_Dir_4(0, 0, 1);
+      break;
+    case "sketch-x":
+      // Local X axis on the sketch plane
+      switch (sketch.plane) {
+        case "XY": axisDir = new oc.gp_Dir_4(1, 0, 0); break;
+        case "XZ": axisDir = new oc.gp_Dir_4(1, 0, 0); break;
+        case "YZ": axisDir = new oc.gp_Dir_4(0, 1, 0); break;
+        default: axisDir = new oc.gp_Dir_4(1, 0, 0); break;
+      }
+      break;
+    case "sketch-y":
+      // Local Y axis on the sketch plane
+      switch (sketch.plane) {
+        case "XY": axisDir = new oc.gp_Dir_4(0, 1, 0); break;
+        case "XZ": axisDir = new oc.gp_Dir_4(0, 0, 1); break;
+        case "YZ": axisDir = new oc.gp_Dir_4(0, 0, 1); break;
+        default: axisDir = new oc.gp_Dir_4(0, 1, 0); break;
+      }
+      break;
+    default:
+      axisDir = new oc.gp_Dir_4(1, 0, 0);
+      break;
+  }
+
+  if (revolve.direction === "reverse") {
+    axisDir = new oc.gp_Dir_4(
+      -axisDir.X(),
+      -axisDir.Y(),
+      -axisDir.Z()
+    );
+  }
+
+  const revolveAxis = new oc.gp_Ax1_2(origin, axisDir);
+
+  let resultShape = currentShape;
+
+  for (const wire of wires) {
+    const face = new oc.BRepBuilderAPI_MakeFace_15(wire, true).Face();
+
+    let revolveAngle = angleRad;
+    if (revolve.direction === "symmetric") {
+      revolveAngle = angleRad / 2;
+    }
+
+    const revolver = new oc.BRepPrimAPI_MakeRevol_1(face, revolveAxis, revolveAngle, true);
+    revolver.Build(new oc.Message_ProgressRange_1());
+    let revolvedShape = revolver.Shape();
+
+    // For symmetric, also revolve in the opposite direction and fuse
+    if (revolve.direction === "symmetric") {
+      const reverseDir = new oc.gp_Dir_4(
+        -axisDir.X(),
+        -axisDir.Y(),
+        -axisDir.Z()
+      );
+      const reverseAxis = new oc.gp_Ax1_2(origin, reverseDir);
+      const reverseRevolver = new oc.BRepPrimAPI_MakeRevol_1(face, reverseAxis, revolveAngle, true);
+      reverseRevolver.Build(new oc.Message_ProgressRange_1());
+      const fuse = new oc.BRepAlgoAPI_Fuse_3(
+        revolvedShape,
+        reverseRevolver.Shape(),
+        new oc.Message_ProgressRange_1()
+      );
+      fuse.Build(new oc.Message_ProgressRange_1());
+      revolvedShape = fuse.Shape();
+    }
+
+    // Combine with existing shape
+    if (resultShape && revolve.operation === "add") {
+      const fuse = new oc.BRepAlgoAPI_Fuse_3(
+        resultShape,
+        revolvedShape,
+        new oc.Message_ProgressRange_1()
+      );
+      fuse.Build(new oc.Message_ProgressRange_1());
+      resultShape = fuse.Shape();
+    } else if (resultShape && revolve.operation === "cut") {
+      const cut = new oc.BRepAlgoAPI_Cut_3(
+        resultShape,
+        revolvedShape,
+        new oc.Message_ProgressRange_1()
+      );
+      cut.Build(new oc.Message_ProgressRange_1());
+      resultShape = cut.Shape();
+    } else {
+      resultShape = revolvedShape;
+    }
+  }
+
+  return resultShape;
+}
+
+/**
+ * Performs a fillet (edge rounding) on all or specific edges of the current shape.
+ * Returns the modified OCCT shape.
+ */
+export function performFillet(
+  oc: any,
+  fillet: FilletFeature,
+  parameters: Record<string, Parameter>,
+  currentShape: any
+): any {
+  if (!currentShape) {
+    throw new Error(`Fillet "${fillet.name}" requires an existing solid shape`);
+  }
+
+  const radius = resolveValue(fillet.radius, parameters);
+
+  const filletMaker = new oc.BRepFilletAPI_MakeFillet_1(
+    currentShape,
+    oc.ChFi3d_FilletShape.ChFi3d_Rational
+  );
+
+  if (fillet.edgeIds.length === 1 && fillet.edgeIds[0] === "all") {
+    // Add all edges
+    const explorer = new oc.TopExp_Explorer_2(
+      currentShape,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+    while (explorer.More()) {
+      const edge = oc.TopoDS.Edge_1(explorer.Current());
+      filletMaker.Add_2(radius, edge);
+      explorer.Next();
+    }
+  } else {
+    // Add specific edges by index
+    const edges: any[] = [];
+    const explorer = new oc.TopExp_Explorer_2(
+      currentShape,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+    while (explorer.More()) {
+      edges.push(oc.TopoDS.Edge_1(explorer.Current()));
+      explorer.Next();
+    }
+    for (const edgeId of fillet.edgeIds) {
+      const idx = parseInt(edgeId, 10);
+      if (idx >= 0 && idx < edges.length) {
+        filletMaker.Add_2(radius, edges[idx]);
+      }
+    }
+  }
+
+  filletMaker.Build(new oc.Message_ProgressRange_1());
+  return filletMaker.Shape();
+}
+
+/**
+ * Performs a chamfer (edge bevel) on all or specific edges of the current shape.
+ * Returns the modified OCCT shape.
+ */
+export function performChamfer(
+  oc: any,
+  chamfer: ChamferFeature,
+  parameters: Record<string, Parameter>,
+  currentShape: any
+): any {
+  if (!currentShape) {
+    throw new Error(`Chamfer "${chamfer.name}" requires an existing solid shape`);
+  }
+
+  const distance = resolveValue(chamfer.distance, parameters);
+
+  const chamferMaker = new oc.BRepFilletAPI_MakeChamfer_1(currentShape);
+
+  if (chamfer.edgeIds.length === 1 && chamfer.edgeIds[0] === "all") {
+    // Add all edges
+    const explorer = new oc.TopExp_Explorer_2(
+      currentShape,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+    while (explorer.More()) {
+      const edge = oc.TopoDS.Edge_1(explorer.Current());
+      chamferMaker.Add_2(distance, edge);
+      explorer.Next();
+    }
+  } else {
+    // Add specific edges by index
+    const edges: any[] = [];
+    const explorer = new oc.TopExp_Explorer_2(
+      currentShape,
+      oc.TopAbs_ShapeEnum.TopAbs_EDGE,
+      oc.TopAbs_ShapeEnum.TopAbs_SHAPE
+    );
+    while (explorer.More()) {
+      edges.push(oc.TopoDS.Edge_1(explorer.Current()));
+      explorer.Next();
+    }
+    for (const edgeId of chamfer.edgeIds) {
+      const idx = parseInt(edgeId, 10);
+      if (idx >= 0 && idx < edges.length) {
+        chamferMaker.Add_2(distance, edges[idx]);
+      }
+    }
+  }
+
+  chamferMaker.Build(new oc.Message_ProgressRange_1());
+  return chamferMaker.Shape();
+}
+
+/**
  * Rebuilds the full OCCT shape from a feature tree.
  * Replays features in order, skipping suppressed ones.
  * Returns the final shape or null if no geometry was produced.
@@ -234,6 +496,30 @@ export function rebuildFromFeatureTree(
         parameters,
         currentShape
       );
+    }
+
+    if (feature.type === "revolve") {
+      const sketch = sketchMap.get(feature.sketchId);
+      if (!sketch) {
+        throw new Error(
+          `Revolve "${feature.name}" references missing sketch "${feature.sketchId}"`
+        );
+      }
+      currentShape = performRevolve(
+        oc,
+        sketch.sketch,
+        feature,
+        parameters,
+        currentShape
+      );
+    }
+
+    if (feature.type === "fillet") {
+      currentShape = performFillet(oc, feature, parameters, currentShape);
+    }
+
+    if (feature.type === "chamfer") {
+      currentShape = performChamfer(oc, feature, parameters, currentShape);
     }
   }
 

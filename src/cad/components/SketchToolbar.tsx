@@ -16,6 +16,12 @@ export function SketchToolbar() {
 
   if (!cad.uiState.sketchModeActive) return null;
 
+  const isSelectMode = cad.uiState.activeTool === "select";
+
+  const handleDeleteSelected = () => {
+    window.dispatchEvent(new CustomEvent("cad-delete-selected-entities"));
+  };
+
   return (
     <div className="flex h-8 items-center border-b border-gray-800/50 bg-[#16162a] px-4 text-xs">
       <span className="mr-3 text-amber-400">Sketch Tools:</span>
@@ -33,6 +39,19 @@ export function SketchToolbar() {
           <span>{label}</span>
         </button>
       ))}
+
+      {/* Delete button — visible when in select mode */}
+      {isSelectMode && (
+        <button
+          onClick={handleDeleteSelected}
+          className="mr-1 flex items-center gap-1 rounded bg-red-800/80 px-2 py-0.5 text-red-200 hover:bg-red-700"
+          title="Delete selected entities (Delete/Backspace)"
+        >
+          <span>&#x2716;</span>
+          <span>Delete</span>
+        </button>
+      )}
+
       <div className="flex-1" />
       <button
         onClick={() => cad.setSketchModeActive(false)}

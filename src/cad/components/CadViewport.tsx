@@ -143,14 +143,34 @@ function CadScene() {
   );
 
   // Cancel sketch drawing on Escape (also handled by CadWorkspace, but this cancels the drawing state)
+  // Delete/Backspace deletes selected sketch entities when in select mode
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && sketchMode.isDrawing) {
         sketchMode.cancel();
       }
+      if (
+        (e.key === "Delete" || e.key === "Backspace") &&
+        cad.uiState.sketchModeActive &&
+        cad.uiState.activeTool === "select" &&
+        sketchMode.selectedEntityIds.size > 0
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        sketchMode.deleteSelectedEntities();
+      }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [sketchMode, cad.uiState.sketchModeActive, cad.uiState.activeTool]);
+
+  // Listen for delete-selected-entities custom event (from toolbar button)
+  useEffect(() => {
+    const handler = () => {
+      sketchMode.deleteSelectedEntities();
+    };
+    window.addEventListener("cad-delete-selected-entities", handler);
+    return () => window.removeEventListener("cad-delete-selected-entities", handler);
   }, [sketchMode]);
 
   return (

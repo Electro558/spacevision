@@ -45,6 +45,39 @@ function to3D(plane: SketchPlane, x: number, y: number): THREE.Vector3 {
 }
 
 /**
+ * Generates points along an arc for rendering.
+ * Sweeps from startAngle to endAngle around center with given radius.
+ * Always sweeps in the shorter direction unless the arc is nearly a full circle.
+ */
+function generateArcPoints(
+  center: { x: number; y: number },
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+  plane: import("../engine/types").SketchPlane,
+  segmentCount = 64
+): THREE.Vector3[] {
+  let sweep = endAngle - startAngle;
+  // Normalize sweep to (-2PI, 2PI) and pick shorter path
+  while (sweep > Math.PI) sweep -= 2 * Math.PI;
+  while (sweep < -Math.PI) sweep += 2 * Math.PI;
+
+  const pts: THREE.Vector3[] = [];
+  for (let i = 0; i <= segmentCount; i++) {
+    const t = i / segmentCount;
+    const angle = startAngle + sweep * t;
+    pts.push(
+      to3D(
+        plane,
+        center.x + Math.cos(angle) * radius,
+        center.y + Math.sin(angle) * radius
+      )
+    );
+  }
+  return pts;
+}
+
+/**
  * Renders sketch entities as 2D line overlays in the 3D scene.
  */
 export function SketchOverlay({
@@ -95,6 +128,16 @@ export function SketchOverlay({
           );
         }
         segments.push(pts);
+      } else if (entity.type === "arc") {
+        const center = pointMap.get(entity.centerId);
+        const start = pointMap.get(entity.startId);
+        const end = pointMap.get(entity.endId);
+        if (!center || !start || !end) continue;
+        const r = typeof entity.radius === "number" ? entity.radius : 5;
+        const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+        const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+        const pts = generateArcPoints(center, r, startAngle, endAngle, sketch.plane);
+        segments.push(pts);
       } else if (entity.type === "line") {
         const start = pointMap.get(entity.startId);
         const end = pointMap.get(entity.endId);
@@ -142,6 +185,36 @@ export function SketchOverlay({
     }
     if (activeTool === "line") {
       return previewPoints.map((p) => to3D(sketch.plane, p.x, p.y));
+    }
+    if (activeTool === "arc") {
+      if (previewPoints.length === 2) {
+        // During second click: show line from start to cursor
+        return previewPoints.map((p) => to3D(sketch.plane, p.x, p.y));
+      }
+      if (previewPoints.length === 3) {
+        // During third click: show arc preview using circumscribed circle
+        const [p1, p2, p3] = previewPoints;
+        const x1 = p1.x, y1 = p1.y;
+        const x2 = p2.x, y2 = p2.y;
+        const x3 = p3.x, y3 = p3.y;
+        const D = 2 * (x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2));
+        if (Math.abs(D) < 1e-10) {
+          // Degenerate (collinear) — just show a line
+          return previewPoints.map((p) => to3D(sketch.plane, p.x, p.y));
+        }
+        const cx =
+          ((x1 * x1 + y1 * y1) * (y2 - y3) +
+            (x2 * x2 + y2 * y2) * (y3 - y1) +
+            (x3 * x3 + y3 * y3) * (y1 - y2)) / D;
+        const cy =
+          ((x1 * x1 + y1 * y1) * (x3 - x2) +
+            (x2 * x2 + y2 * y2) * (x1 - x3) +
+            (x3 * x3 + y3 * y3) * (x2 - x1)) / D;
+        const r = Math.sqrt((x1 - cx) * (x1 - cx) + (y1 - cy) * (y1 - cy));
+        const startAngle = Math.atan2(y1 - cy, x1 - cx);
+        const endAngle = Math.atan2(y2 - cy, x2 - cx);
+        return generateArcPoints({ x: cx, y: cy }, r, startAngle, endAngle, sketch.plane);
+      }
     }
     return null;
   }, [previewPoints, activeTool, sketch.plane]);

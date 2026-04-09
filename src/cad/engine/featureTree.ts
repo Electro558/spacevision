@@ -1,6 +1,6 @@
 // src/cad/engine/featureTree.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
 
 let counter = 0;
 
@@ -137,6 +137,56 @@ export function createExtrude(
 }
 
 /**
+ * Creates a revolve feature referencing a sketch.
+ */
+export function createRevolve(
+  sketchId: string,
+  angle: number = 360,
+  axis: RevolveFeature["axis"] = "x"
+): RevolveFeature {
+  return {
+    id: newFeatureId(),
+    type: "revolve",
+    name: `Revolve ${Date.now() % 1000}`,
+    suppressed: false,
+    sketchId,
+    profiles: [],
+    axis,
+    angle,
+    direction: "normal",
+    operation: "add",
+  };
+}
+
+/**
+ * Creates a fillet feature that rounds edges.
+ */
+export function createFillet(radius: number = 2): FilletFeature {
+  return {
+    id: newFeatureId(),
+    type: "fillet",
+    name: `Fillet ${Date.now() % 1000}`,
+    suppressed: false,
+    edgeIds: ["all"],
+    radius,
+  };
+}
+
+/**
+ * Creates a chamfer feature that bevels edges.
+ */
+export function createChamfer(distance: number = 1): ChamferFeature {
+  return {
+    id: newFeatureId(),
+    type: "chamfer",
+    name: `Chamfer ${Date.now() % 1000}`,
+    suppressed: false,
+    edgeIds: ["all"],
+    distance,
+  };
+}
+
+/**
  * Appends a feature to the end of the feature list.
  */
 export function appendFeature(features: Feature[], feature: Feature): Feature[] {
@@ -149,9 +199,10 @@ export function appendFeature(features: Feature[], feature: Feature): Feature[] 
  */
 export function removeFeature(features: Feature[], featureId: string): Feature[] {
   const remaining = features.filter((f) => f.id !== featureId);
-  // Remove extrudes that referenced the deleted sketch
+  // Remove extrudes and revolves that referenced the deleted sketch
   return remaining.filter((f) => {
     if (f.type === "extrude" && f.sketchId === featureId) return false;
+    if (f.type === "revolve" && f.sketchId === featureId) return false;
     return true;
   });
 }

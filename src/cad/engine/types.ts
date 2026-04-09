@@ -81,7 +81,38 @@ export interface ExtrudeFeature {
   operation: "add" | "cut";
 }
 
-export type Feature = SketchFeature | ExtrudeFeature;
+export interface RevolveFeature {
+  id: string;
+  type: "revolve";
+  name: string;
+  suppressed: boolean;
+  sketchId: string;
+  profiles: string[];
+  axis: "x" | "y" | "z" | "sketch-x" | "sketch-y";
+  angle: number | string; // degrees, can be param ref
+  direction: "normal" | "reverse" | "symmetric";
+  operation: "add" | "cut";
+}
+
+export interface FilletFeature {
+  id: string;
+  type: "fillet";
+  name: string;
+  suppressed: boolean;
+  edgeIds: string[]; // "all" for all edges, or specific edge indices
+  radius: number | string; // can be param ref
+}
+
+export interface ChamferFeature {
+  id: string;
+  type: "chamfer";
+  name: string;
+  suppressed: boolean;
+  edgeIds: string[];
+  distance: number | string; // can be param ref
+}
+
+export type Feature = SketchFeature | ExtrudeFeature | RevolveFeature | FilletFeature | ChamferFeature;
 
 export interface Parameter {
   name: string;
@@ -106,8 +137,19 @@ export interface CadProject {
 
 export interface WorkerRequest {
   id: string;
-  type: "init" | "rebuild" | "extrude" | "tessellate";
+  type: "init" | "rebuild" | "extrude" | "tessellate" | "export";
   payload: unknown;
+}
+
+export interface ExportPayload {
+  format: "step" | "stl";
+  features: Feature[];
+  parameters: Record<string, Parameter>;
+}
+
+export interface ExportResultPayload {
+  data: ArrayBuffer;
+  filename: string;
 }
 
 export interface InitPayload {}

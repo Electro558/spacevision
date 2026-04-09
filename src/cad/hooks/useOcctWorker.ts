@@ -4,7 +4,13 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { OcctWorkerApi } from "../worker/workerApi";
-import type { RebuildPayload, RebuildResultPayload } from "../engine/types";
+import type {
+  RebuildPayload,
+  RebuildResultPayload,
+  ExportResultPayload,
+  Feature,
+  Parameter,
+} from "../engine/types";
 
 export type OcctStatus = "idle" | "loading" | "ready" | "error";
 
@@ -54,5 +60,22 @@ export function useOcctWorker() {
     [status]
   );
 
-  return { status, loadProgress, loadMessage, error, rebuild };
+  const exportShape = useCallback(
+    async (
+      format: "step" | "stl",
+      features: Feature[],
+      parameters: Record<string, Parameter>
+    ): Promise<ExportResultPayload | null> => {
+      if (!apiRef.current || status !== "ready") return null;
+      try {
+        return await apiRef.current.exportShape(format, features, parameters);
+      } catch (err: any) {
+        setError(err.message);
+        return null;
+      }
+    },
+    [status]
+  );
+
+  return { status, loadProgress, loadMessage, error, rebuild, exportShape };
 }

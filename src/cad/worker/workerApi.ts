@@ -5,9 +5,13 @@ import type {
   WorkerResponse,
   RebuildPayload,
   RebuildResultPayload,
+  ExportPayload,
+  ExportResultPayload,
   ReadyPayload,
   ProgressPayload,
   ErrorPayload,
+  Feature,
+  Parameter,
 } from "../engine/types";
 
 type RequestCallback = {
@@ -107,6 +111,26 @@ export class OcctWorkerApi {
       throw new Error(err.message);
     }
     return response.payload as RebuildResultPayload;
+  }
+
+  /**
+   * Export the shape to STEP or STL format.
+   */
+  async exportShape(
+    format: "step" | "stl",
+    features: Feature[],
+    parameters: Record<string, Parameter>
+  ): Promise<ExportResultPayload> {
+    const response = await this.request("export", {
+      format,
+      features,
+      parameters,
+    } satisfies ExportPayload);
+    if (response.type === "error") {
+      const err = response.payload as ErrorPayload;
+      throw new Error(err.message);
+    }
+    return response.payload as ExportResultPayload;
   }
 
   /**

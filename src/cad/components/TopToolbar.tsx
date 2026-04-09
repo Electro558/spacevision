@@ -5,6 +5,9 @@ import { useCad } from "../context/CadContext";
 import {
   createSketch,
   createExtrude,
+  createRevolve,
+  createFillet,
+  createChamfer,
 } from "../engine/featureTree";
 import { createParameter } from "../engine/parameterRegistry";
 import { downloadProject, loadProjectFromFile } from "../engine/projectSerializer";
@@ -57,6 +60,52 @@ export function TopToolbar() {
     setOpenMenu(null);
   };
 
+  const handleRevolve = () => {
+    // Find the last sketch feature (same pattern as extrude)
+    const sketches = cad.project.features.filter(
+      (f): f is SketchFeature => f.type === "sketch"
+    );
+    if (sketches.length === 0) {
+      alert("Create a sketch first before revolving.");
+      return;
+    }
+    const lastSketch = sketches[sketches.length - 1];
+    const revolve = createRevolve(lastSketch.id, 360, "x");
+    cad.addFeature(revolve);
+    cad.setSelectedFeatureId(revolve.id);
+    setOpenMenu(null);
+  };
+
+  const handleFillet = () => {
+    // Fillet applies to the current solid — no sketch needed
+    const hasSolid = cad.project.features.some(
+      (f) => (f.type === "extrude" || f.type === "revolve") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Create a solid feature (Extrude or Revolve) before adding a Fillet.");
+      return;
+    }
+    const fillet = createFillet(2);
+    cad.addFeature(fillet);
+    cad.setSelectedFeatureId(fillet.id);
+    setOpenMenu(null);
+  };
+
+  const handleChamfer = () => {
+    // Chamfer applies to the current solid — no sketch needed
+    const hasSolid = cad.project.features.some(
+      (f) => (f.type === "extrude" || f.type === "revolve") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Create a solid feature (Extrude or Revolve) before adding a Chamfer.");
+      return;
+    }
+    const chamfer = createChamfer(1);
+    cad.addFeature(chamfer);
+    cad.setSelectedFeatureId(chamfer.id);
+    setOpenMenu(null);
+  };
+
   const handleSaveFile = () => {
     downloadProject(cad.project);
     setOpenMenu(null);
@@ -90,6 +139,8 @@ export function TopToolbar() {
         { label: "New Project", action: () => { window.location.reload(); }, shortcut: "Ctrl+N" },
         { label: "Open .svcp...", action: handleOpenFile, shortcut: "Ctrl+O" },
         { label: "Save to File", action: handleSaveFile, shortcut: "Ctrl+S" },
+        { label: "Export STEP", action: () => { cad.exportProject("step"); setOpenMenu(null); } },
+        { label: "Export STL", action: () => { cad.exportProject("stl"); setOpenMenu(null); } },
       ],
     },
     {
@@ -107,6 +158,9 @@ export function TopToolbar() {
       label: "Features",
       items: [
         { label: "Extrude", action: handleExtrude, shortcut: "E" },
+        { label: "Revolve", action: handleRevolve, shortcut: "R" },
+        { label: "Fillet", action: handleFillet },
+        { label: "Chamfer", action: handleChamfer },
       ],
     },
     {

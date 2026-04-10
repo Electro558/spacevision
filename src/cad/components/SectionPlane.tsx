@@ -38,8 +38,7 @@ export function SectionPlane({ plane, offset, visible }: SectionPlaneProps) {
     };
   }, [visible, plane, offset, gl]);
 
-  if (!visible) return null;
-
+  // All hooks must be called before any conditional return
   const rotation: [number, number, number] = useMemo(() => {
     switch (plane) {
       case "XY": return [0, 0, 0];
@@ -55,6 +54,8 @@ export function SectionPlane({ plane, offset, visible }: SectionPlaneProps) {
       case "YZ": return [offset, 0, 0];
     }
   }, [plane, offset]);
+
+  if (!visible) return null;
 
   return (
     <mesh rotation={rotation} position={position}>

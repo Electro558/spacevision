@@ -10,19 +10,28 @@ import type { Sketch, SketchPlane } from "../engine/types";
  * Helper component that renders a line from an array of Vector3 points.
  * Uses imperative geometry updates to avoid R3F bufferAttribute typing issues.
  */
-function SketchLine({ points, color, opacity = 1 }: { points: THREE.Vector3[]; color: string; opacity?: number }) {
+function SketchLine({ points, color, opacity = 1, dashed = false }: { points: THREE.Vector3[]; color: string; opacity?: number; dashed?: boolean }) {
   const ref = useRef<THREE.BufferGeometry>(null);
+  const lineRef = useRef<THREE.Line>(null);
 
   useEffect(() => {
     if (!ref.current) return;
     const positions = new Float32Array(points.flatMap((p) => [p.x, p.y, p.z]));
     ref.current.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  }, [points]);
+    // Dashed materials need line distances computed
+    if (dashed && lineRef.current) {
+      lineRef.current.computeLineDistances();
+    }
+  }, [points, dashed]);
 
   return (
-    <line>
+    <line ref={lineRef as any}>
       <bufferGeometry ref={ref} />
-      <lineBasicMaterial color={color} linewidth={2} opacity={opacity} transparent={opacity < 1} />
+      {dashed ? (
+        <lineDashedMaterial color={color} dashSize={0.5} gapSize={0.3} opacity={opacity} transparent={opacity < 1} />
+      ) : (
+        <lineBasicMaterial color={color} linewidth={2} opacity={opacity} transparent={opacity < 1} />
+      )}
     </line>
   );
 }
@@ -93,11 +102,13 @@ export function SketchOverlay({
     return map;
   }, [sketch.points]);
 
-  // Build line segments for all entities
-  const linePoints = useMemo(() => {
+  // Build line segments for all entities, tracking which are construction
+  const { segments: linePoints, isConstruction } = useMemo(() => {
     const segments: THREE.Vector3[][] = [];
+    const isConstruction: boolean[] = [];
 
     for (const entity of sketch.entities) {
+      const isCon = entity.construction ?? false;
       if (entity.type === "rectangle") {
         const origin = pointMap.get(entity.originId);
         if (!origin) continue;
@@ -111,6 +122,7 @@ export function SketchOverlay({
           to3D(sketch.plane, x, y + h),
           to3D(sketch.plane, x, y), // close
         ]);
+        isConstruction.push(isCon);
       } else if (entity.type === "circle") {
         const center = pointMap.get(entity.centerId);
         if (!center) continue;
@@ -128,6 +140,7 @@ export function SketchOverlay({
           );
         }
         segments.push(pts);
+        isConstruction.push(isCon);
       } else if (entity.type === "arc") {
         const center = pointMap.get(entity.centerId);
         const start = pointMap.get(entity.startId);
@@ -138,6 +151,7 @@ export function SketchOverlay({
         const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
         const pts = generateArcPoints(center, r, startAngle, endAngle, sketch.plane);
         segments.push(pts);
+        isConstruction.push(isCon);
       } else if (entity.type === "line") {
         const start = pointMap.get(entity.startId);
         const end = pointMap.get(entity.endId);
@@ -146,10 +160,11 @@ export function SketchOverlay({
           to3D(sketch.plane, start.x, start.y),
           to3D(sketch.plane, end.x, end.y),
         ]);
+        isConstruction.push(isCon);
       }
     }
 
-    return segments;
+    return { segments, isConstruction };
   }, [sketch, pointMap]);
 
   // Preview line (during drawing)
@@ -223,7 +238,13 @@ export function SketchOverlay({
     <group>
       {/* Existing sketch entities */}
       {linePoints.map((pts, i) => (
-        <SketchLine key={i} points={pts} color="#22d3ee" />
+        <SketchLine
+          key={i}
+          points={pts}
+          color={isConstruction[i] ? "#f59e0b" : "#22d3ee"}
+          opacity={isConstruction[i] ? 0.5 : 1}
+          dashed={isConstruction[i]}
+        />
       ))}
 
       {/* Preview during drawing */}

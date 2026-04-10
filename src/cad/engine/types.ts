@@ -15,6 +15,7 @@ export interface SketchLine {
   type: "line";
   startId: string;
   endId: string;
+  construction?: boolean;
 }
 
 export interface SketchCircle {
@@ -22,6 +23,7 @@ export interface SketchCircle {
   type: "circle";
   centerId: string;
   radius: number | string;
+  construction?: boolean;
 }
 
 export interface SketchArc {
@@ -31,6 +33,7 @@ export interface SketchArc {
   startId: string;
   endId: string;
   radius: number | string;
+  construction?: boolean;
 }
 
 export interface SketchRectangle {
@@ -39,6 +42,7 @@ export interface SketchRectangle {
   originId: string;
   width: number | string;
   height: number | string;
+  construction?: boolean;
 }
 
 export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle;
@@ -112,7 +116,77 @@ export interface ChamferFeature {
   distance: number | string; // can be param ref
 }
 
-export type Feature = SketchFeature | ExtrudeFeature | RevolveFeature | FilletFeature | ChamferFeature;
+export interface LoftFeature {
+  id: string;
+  type: "loft";
+  name: string;
+  suppressed: boolean;
+  sketchIds: string[];
+  solid: boolean;
+  operation: "add" | "cut";
+}
+
+export interface SweepFeature {
+  id: string;
+  type: "sweep";
+  name: string;
+  suppressed: boolean;
+  profileSketchId: string;
+  pathSketchId: string;
+  operation: "add" | "cut";
+}
+
+export interface ShellFeature {
+  id: string;
+  type: "shell";
+  name: string;
+  suppressed: boolean;
+  thickness: number | string;
+  removeFaceIds: string[];
+}
+
+export interface LinearPatternFeature {
+  id: string;
+  type: "linearPattern";
+  name: string;
+  suppressed: boolean;
+  sourceFeatureId: string;
+  direction: "x" | "y" | "z";
+  count: number;
+  spacing: number | string;
+}
+
+export interface CircularPatternFeature {
+  id: string;
+  type: "circularPattern";
+  name: string;
+  suppressed: boolean;
+  sourceFeatureId: string;
+  axis: "x" | "y" | "z";
+  count: number;
+  angle: number | string;
+}
+
+export interface MirrorBodyFeature {
+  id: string;
+  type: "mirrorBody";
+  name: string;
+  suppressed: boolean;
+  plane: "XY" | "XZ" | "YZ";
+}
+
+export type Feature =
+  | SketchFeature
+  | ExtrudeFeature
+  | RevolveFeature
+  | FilletFeature
+  | ChamferFeature
+  | LoftFeature
+  | SweepFeature
+  | ShellFeature
+  | LinearPatternFeature
+  | CircularPatternFeature
+  | MirrorBodyFeature;
 
 export interface Parameter {
   name: string;
@@ -190,8 +264,15 @@ export interface ErrorPayload {
   featureId?: string;
 }
 
-export type CadTool = "select" | "line" | "circle" | "rectangle" | "arc";
-export type ViewMode = "shaded" | "wireframe" | "xray";
+export type CadTool = "select" | "line" | "circle" | "rectangle" | "arc" | "trim" | "mirror" | "offset";
+export type ViewMode = "shaded" | "wireframe" | "xray" | "measure";
+
+export interface MeasureResult {
+  type: "distance" | "angle";
+  value: number;
+  unit: string;
+  points: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }];
+}
 export type ViewPreset = "iso" | "front" | "back" | "top" | "bottom" | "left" | "right";
 
 export interface CadUIState {

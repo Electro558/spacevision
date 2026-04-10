@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useCad } from "../context/CadContext";
 import type { CadTool } from "../engine/types";
 
@@ -9,10 +10,19 @@ const SKETCH_TOOLS: { tool: CadTool; label: string; icon: string }[] = [
   { tool: "circle", label: "Circle", icon: "○" },
   { tool: "rectangle", label: "Rectangle", icon: "▭" },
   { tool: "arc", label: "Arc", icon: "⌒" },
+  { tool: "trim", label: "Trim", icon: "✂" },
+  { tool: "mirror", label: "Mirror", icon: "⟺" },
+  { tool: "offset", label: "Offset", icon: "⟐" },
 ];
 
 export function SketchToolbar() {
   const cad = useCad();
+  const [constructionMode, setConstructionMode] = useState(false);
+
+  // Broadcast construction mode to useSketchMode via custom event
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("cad-construction-mode", { detail: { active: constructionMode } }));
+  }, [constructionMode]);
 
   if (!cad.uiState.sketchModeActive) return null;
 
@@ -39,6 +49,20 @@ export function SketchToolbar() {
           <span>{label}</span>
         </button>
       ))}
+
+      {/* Construction mode toggle */}
+      <button
+        onClick={() => setConstructionMode(!constructionMode)}
+        className={`mr-1 flex items-center gap-1 rounded px-2 py-0.5 ${
+          constructionMode
+            ? "bg-amber-700 text-amber-100"
+            : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+        }`}
+        title="Toggle construction geometry (C)"
+      >
+        <span>- - -</span>
+        <span>Construction</span>
+      </button>
 
       {/* Delete button — visible when in select mode */}
       {isSelectMode && (

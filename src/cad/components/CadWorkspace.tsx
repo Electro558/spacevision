@@ -103,7 +103,7 @@ export function CadWorkspace() {
                     feature.suppressed ? "line-through" : ""
                   }`}
                 >
-                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : "●"} {feature.name}
+                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : feature.type === "loft" ? "⋈" : feature.type === "sweep" ? "↝" : feature.type === "shell" ? "☐" : feature.type === "linearPattern" ? "⫼" : feature.type === "circularPattern" ? "◎" : feature.type === "mirrorBody" ? "⟺" : "●"} {feature.name}
                 </span>
               </div>
             ))
@@ -285,6 +285,157 @@ export function CadWorkspace() {
                       </div>
                       <div className="flex justify-between text-gray-400">
                         <span>Edges</span><span className="text-green-400">{feature.edgeIds[0] === 'all' ? 'All edges' : `${feature.edgeIds.length} edges`}</span>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "loft" && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-gray-400">
+                        <span>Profiles</span><span className="text-green-400">{feature.sketchIds.length} sketches</span>
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Solid</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.solid ? "true" : "false"}
+                          onChange={(e) => cad.updateFeature(feature.id, { solid: e.target.value === "true" })}
+                        >
+                          <option value="true">Solid</option>
+                          <option value="false">Surface</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Operation</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.operation}
+                          onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
+                        >
+                          <option value="add">Add (Union)</option>
+                          <option value="cut">Cut (Subtract)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "sweep" && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-gray-400">
+                        <span>Profile</span><span className="text-green-400">Sketch</span>
+                      </div>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Path</span><span className="text-green-400">Sketch</span>
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Operation</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.operation}
+                          onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
+                        >
+                          <option value="add">Add (Union)</option>
+                          <option value="cut">Cut (Subtract)</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "shell" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Wall Thickness</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={typeof feature.thickness === 'number' ? feature.thickness : ''}
+                          onChange={(e) => cad.updateFeature(feature.id, { thickness: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "linearPattern" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Count</label>
+                        <input
+                          type="number"
+                          min="2"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={feature.count}
+                          onChange={(e) => cad.updateFeature(feature.id, { count: parseInt(e.target.value) || 2 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Spacing</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={typeof feature.spacing === 'number' ? feature.spacing : ''}
+                          onChange={(e) => cad.updateFeature(feature.id, { spacing: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Direction</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.direction}
+                          onChange={(e) => cad.updateFeature(feature.id, { direction: e.target.value as any })}
+                        >
+                          <option value="x">X Axis</option>
+                          <option value="y">Y Axis</option>
+                          <option value="z">Z Axis</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "circularPattern" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Count</label>
+                        <input
+                          type="number"
+                          min="2"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={feature.count}
+                          onChange={(e) => cad.updateFeature(feature.id, { count: parseInt(e.target.value) || 2 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Angle (total)</label>
+                        <input
+                          type="number"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={typeof feature.angle === 'number' ? feature.angle : ''}
+                          onChange={(e) => cad.updateFeature(feature.id, { angle: parseFloat(e.target.value) || 360 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Axis</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.axis}
+                          onChange={(e) => cad.updateFeature(feature.id, { axis: e.target.value as any })}
+                        >
+                          <option value="x">X Axis</option>
+                          <option value="y">Y Axis</option>
+                          <option value="z">Z Axis</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "mirrorBody" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Mirror Plane</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.plane}
+                          onChange={(e) => cad.updateFeature(feature.id, { plane: e.target.value as any })}
+                        >
+                          <option value="XY">XY Plane</option>
+                          <option value="XZ">XZ Plane</option>
+                          <option value="YZ">YZ Plane</option>
+                        </select>
                       </div>
                     </div>
                   )}

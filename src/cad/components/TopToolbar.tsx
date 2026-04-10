@@ -8,6 +8,12 @@ import {
   createRevolve,
   createFillet,
   createChamfer,
+  createLoft,
+  createSweep,
+  createShell,
+  createLinearPattern,
+  createCircularPattern,
+  createMirrorBody,
 } from "../engine/featureTree";
 import { createParameter } from "../engine/parameterRegistry";
 import { downloadProject, loadProjectFromFile } from "../engine/projectSerializer";
@@ -106,6 +112,81 @@ export function TopToolbar() {
     setOpenMenu(null);
   };
 
+  const handleLoft = () => {
+    const sketches = cad.project.features.filter(f => f.type === "sketch" && !f.suppressed);
+    if (sketches.length < 2) {
+      alert("Loft requires at least 2 sketches. Create more sketches first.");
+      return;
+    }
+    const sketchIds = sketches.slice(-2).map(s => s.id);
+    const loft = createLoft(sketchIds);
+    cad.addFeature(loft);
+    cad.setSelectedFeatureId(loft.id);
+    setOpenMenu(null);
+  };
+
+  const handleSweep = () => {
+    const sketches = cad.project.features.filter(f => f.type === "sketch" && !f.suppressed);
+    if (sketches.length < 2) {
+      alert("Sweep requires a profile sketch and a path sketch. Create at least 2 sketches.");
+      return;
+    }
+    const sweep = createSweep(sketches[sketches.length - 2].id, sketches[sketches.length - 1].id);
+    cad.addFeature(sweep);
+    cad.setSelectedFeatureId(sweep.id);
+    setOpenMenu(null);
+  };
+
+  const handleShell = () => {
+    const hasSolid = cad.project.features.some(
+      f => (f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Shell requires an existing solid. Create an Extrude, Revolve, Loft, or Sweep first.");
+      return;
+    }
+    const shell = createShell(1);
+    cad.addFeature(shell);
+    cad.setSelectedFeatureId(shell.id);
+    setOpenMenu(null);
+  };
+
+  const handleLinearPattern = () => {
+    const lastSolid = cad.project.features.filter(f => f.type !== "sketch" && !f.suppressed).pop();
+    if (!lastSolid) {
+      alert("Pattern requires an existing feature.");
+      return;
+    }
+    const pattern = createLinearPattern(lastSolid.id);
+    cad.addFeature(pattern);
+    cad.setSelectedFeatureId(pattern.id);
+    setOpenMenu(null);
+  };
+
+  const handleCircularPattern = () => {
+    const lastSolid = cad.project.features.filter(f => f.type !== "sketch" && !f.suppressed).pop();
+    if (!lastSolid) {
+      alert("Pattern requires an existing feature.");
+      return;
+    }
+    const pattern = createCircularPattern(lastSolid.id);
+    cad.addFeature(pattern);
+    cad.setSelectedFeatureId(pattern.id);
+    setOpenMenu(null);
+  };
+
+  const handleMirrorBody = () => {
+    const hasSolid = cad.project.features.some(f => f.type !== "sketch" && !f.suppressed);
+    if (!hasSolid) {
+      alert("Mirror requires an existing solid.");
+      return;
+    }
+    const mirror = createMirrorBody("XY");
+    cad.addFeature(mirror);
+    cad.setSelectedFeatureId(mirror.id);
+    setOpenMenu(null);
+  };
+
   const handleSaveFile = () => {
     downloadProject(cad.project);
     setOpenMenu(null);
@@ -159,8 +240,16 @@ export function TopToolbar() {
       items: [
         { label: "Extrude", action: handleExtrude, shortcut: "E" },
         { label: "Revolve", action: handleRevolve, shortcut: "R" },
+        { label: "Loft", action: handleLoft },
+        { label: "Sweep", action: handleSweep },
+        { label: "─────────", action: () => {} },
         { label: "Fillet", action: handleFillet },
         { label: "Chamfer", action: handleChamfer },
+        { label: "Shell", action: handleShell },
+        { label: "─────────", action: () => {} },
+        { label: "Linear Pattern", action: handleLinearPattern },
+        { label: "Circular Pattern", action: handleCircularPattern },
+        { label: "Mirror Body", action: handleMirrorBody },
       ],
     },
     {
@@ -169,6 +258,8 @@ export function TopToolbar() {
       items: [
         { label: cad.uiState.gridVisible ? "Hide Grid" : "Show Grid", action: cad.toggleGrid },
         { label: cad.uiState.snapEnabled ? "Disable Snap" : "Enable Snap", action: cad.toggleSnap },
+        { label: "Measure Distance", action: () => { cad.setViewMode("measure" as any); setOpenMenu(null); } },
+        { label: "Toggle Section View", action: () => { window.dispatchEvent(new Event("cad-toggle-section")); setOpenMenu(null); } },
       ],
     },
   ];

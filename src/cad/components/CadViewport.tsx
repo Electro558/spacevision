@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useRef, useCallback, useEffect, useMemo } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { OrbitControls, Grid, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import * as THREE from "three";
@@ -10,8 +10,10 @@ import { useCad } from "../context/CadContext";
 import { useSketchMode } from "../hooks/useSketchMode";
 import { TessellatedMesh } from "./TessellatedMesh";
 import { SketchOverlay } from "./SketchOverlay";
+import { MeasureOverlay } from "./MeasureOverlay";
+import { SectionPlane } from "./SectionPlane";
 import { ViewCubeOverlay, VIEW_CAMERA_POSITIONS } from "./ViewCube";
-import type { ViewPreset, SketchFeature, SketchPlane, Sketch } from "../engine/types";
+import type { ViewPreset, SketchFeature, SketchPlane, Sketch, MeasureResult } from "../engine/types";
 
 /**
  * Converts a 3D intersection point to 2D sketch-plane coordinates.
@@ -97,7 +99,79 @@ function SketchPlaneHelper({
 function CadScene() {
   const cad = useCad();
   const controlsRef = useRef<any>(null);
-  const { camera } = useThree();
+  const { camera, gl, scene } = useThree();
+
+  // Measure tool state
+  const [measurePoints, setMeasurePoints] = useState<THREE.Vector3[]>([]);
+  const [measureResults, setMeasureResults] = useState<MeasureResult[]>([]);
+  const measureRaycaster = useMemo(() => new THREE.Raycaster(), []);
+
+  // Section view state
+  const [sectionConfig, setSectionConfig] = useState<{ visible: boolean; plane: "XY" | "XZ" | "YZ"; offset: number }>({
+    visible: false, plane: "XY", offset: 5,
+  });
+
+  // Listen for section toggle event
+  useEffect(() => {
+    const handler = () => {
+      setSectionConfig(prev => ({ ...prev, visible: !prev.visible }));
+    };
+    window.addEventListener("cad-toggle-section", handler);
+    return () => window.removeEventListener("cad-toggle-section", handler);
+  }, []);
+
+  // Measure mode click handler
+  useEffect(() => {
+    if (cad.uiState.viewMode !== "measure") {
+      setMeasurePoints([]);
+      return;
+    }
+    const canvas = gl.domElement;
+
+    const handleMeasureClick = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      measureRaycaster.setFromCamera(mouse, camera);
+
+      const meshes: THREE.Object3D[] = [];
+      scene.traverse(obj => { if ((obj as THREE.Mesh).isMesh) meshes.push(obj); });
+      const intersects = measureRaycaster.intersectObjects(meshes);
+
+      if (intersects.length > 0) {
+        const pt = intersects[0].point.clone();
+        setMeasurePoints(prev => {
+          if (prev.length >= 2) {
+            // Reset — start new measurement
+            return [pt];
+          }
+          const newPts = [...prev, pt];
+          if (newPts.length === 2) {
+            const [p1, p2] = newPts;
+            const dist = p1.distanceTo(p2);
+            setMeasureResults(prevResults => [
+              ...prevResults,
+              {
+                type: "distance",
+                value: dist,
+                unit: "mm",
+                points: [
+                  { x: p1.x, y: p1.y, z: p1.z },
+                  { x: p2.x, y: p2.y, z: p2.z },
+                ],
+              },
+            ]);
+          }
+          return newPts;
+        });
+      }
+    };
+
+    canvas.addEventListener("click", handleMeasureClick);
+    return () => canvas.removeEventListener("click", handleMeasureClick);
+  }, [cad.uiState.viewMode, camera, gl, scene, measureRaycaster]);
 
   // Listen for view preset changes
   useEffect(() => {
@@ -242,6 +316,14 @@ function CadScene() {
         maxDistance={500}
         enableRotate={!cad.uiState.sketchModeActive}
       />
+
+      {/* Measure overlay */}
+      {measureResults.length > 0 && (
+        <MeasureOverlay results={measureResults} />
+      )}
+
+      {/* Section plane */}
+      <SectionPlane {...sectionConfig} />
 
       {/* View gizmo */}
       <GizmoHelper alignment="top-right" margin={[60, 60]}>

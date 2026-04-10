@@ -8,7 +8,7 @@ import type { TessellationResult } from "../engine/types";
 
 interface TessellatedMeshProps {
   mesh: TessellationResult;
-  viewMode: "shaded" | "wireframe" | "xray";
+  viewMode: "shaded" | "wireframe" | "xray" | "measure";
 }
 
 export function TessellatedMesh({ mesh, viewMode }: TessellatedMeshProps) {

@@ -1,6 +1,6 @@
 // src/cad/engine/featureTree.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
 
 let counter = 0;
 
@@ -187,6 +187,95 @@ export function createChamfer(distance: number = 1): ChamferFeature {
 }
 
 /**
+ * Creates a loft feature blending between 2+ sketch profiles.
+ */
+export function createLoft(sketchIds: string[]): LoftFeature {
+  return {
+    id: newFeatureId(),
+    type: "loft",
+    name: `Loft ${Date.now() % 1000}`,
+    suppressed: false,
+    sketchIds,
+    solid: true,
+    operation: "add",
+  };
+}
+
+/**
+ * Creates a sweep feature that sweeps a profile along a path.
+ */
+export function createSweep(profileSketchId: string, pathSketchId: string): SweepFeature {
+  return {
+    id: newFeatureId(),
+    type: "sweep",
+    name: `Sweep ${Date.now() % 1000}`,
+    suppressed: false,
+    profileSketchId,
+    pathSketchId,
+    operation: "add",
+  };
+}
+
+/**
+ * Creates a shell feature that hollows a solid.
+ */
+export function createShell(thickness: number = 1): ShellFeature {
+  return {
+    id: newFeatureId(),
+    type: "shell",
+    name: `Shell ${Date.now() % 1000}`,
+    suppressed: false,
+    thickness,
+    removeFaceIds: [],
+  };
+}
+
+/**
+ * Creates a linear pattern feature that repeats geometry along an axis.
+ */
+export function createLinearPattern(sourceFeatureId: string, direction: "x" | "y" | "z" = "x", count: number = 3, spacing: number = 10): LinearPatternFeature {
+  return {
+    id: newFeatureId(),
+    type: "linearPattern",
+    name: `Linear Pattern ${Date.now() % 1000}`,
+    suppressed: false,
+    sourceFeatureId,
+    direction,
+    count,
+    spacing,
+  };
+}
+
+/**
+ * Creates a circular pattern feature that repeats geometry around an axis.
+ */
+export function createCircularPattern(sourceFeatureId: string, axis: "x" | "y" | "z" = "z", count: number = 6, angle: number = 360): CircularPatternFeature {
+  return {
+    id: newFeatureId(),
+    type: "circularPattern",
+    name: `Circular Pattern ${Date.now() % 1000}`,
+    suppressed: false,
+    sourceFeatureId,
+    axis,
+    count,
+    angle,
+  };
+}
+
+/**
+ * Creates a mirror body feature that mirrors the entire solid across a plane.
+ */
+export function createMirrorBody(plane: "XY" | "XZ" | "YZ" = "XY"): MirrorBodyFeature {
+  return {
+    id: newFeatureId(),
+    type: "mirrorBody",
+    name: `Mirror ${Date.now() % 1000}`,
+    suppressed: false,
+    plane,
+  };
+}
+
+/**
  * Appends a feature to the end of the feature list.
  */
 export function appendFeature(features: Feature[], feature: Feature): Feature[] {
@@ -199,10 +288,14 @@ export function appendFeature(features: Feature[], feature: Feature): Feature[] 
  */
 export function removeFeature(features: Feature[], featureId: string): Feature[] {
   const remaining = features.filter((f) => f.id !== featureId);
-  // Remove extrudes and revolves that referenced the deleted sketch
+  // Remove features that referenced the deleted feature/sketch
   return remaining.filter((f) => {
     if (f.type === "extrude" && f.sketchId === featureId) return false;
     if (f.type === "revolve" && f.sketchId === featureId) return false;
+    if (f.type === "sweep" && (f.profileSketchId === featureId || f.pathSketchId === featureId)) return false;
+    if (f.type === "loft" && f.sketchIds.includes(featureId)) return false;
+    if (f.type === "linearPattern" && f.sourceFeatureId === featureId) return false;
+    if (f.type === "circularPattern" && f.sourceFeatureId === featureId) return false;
     return true;
   });
 }

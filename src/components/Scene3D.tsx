@@ -2,7 +2,7 @@
 
 import { useRef, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Float, MeshDistortMaterial, Environment } from "@react-three/drei";
+import { OrbitControls, Float, MeshDistortMaterial } from "@react-three/drei";
 import * as THREE from "three";
 
 function FloatingShape({
@@ -87,7 +87,6 @@ export default function Scene3D() {
         <FloatingShape position={[1.5, 2, -3]} color="#2563eb" speed={0.8} distort={0.2} size={0.3} />
 
         <Particles />
-        <Environment preset="night" />
         <OrbitControls
           enableZoom={false}
           enablePan={false}

@@ -4,14 +4,18 @@
 
 import { useMemo, useEffect } from "react";
 import * as THREE from "three";
-import type { TessellationResult } from "../engine/types";
+import type { TessellationResult, MaterialConfig } from "../engine/types";
+import { DEFAULT_MATERIAL } from "../engine/materials";
 
 interface TessellatedMeshProps {
   mesh: TessellationResult;
   viewMode: "shaded" | "wireframe" | "xray" | "measure";
+  material?: MaterialConfig;
 }
 
-export function TessellatedMesh({ mesh, viewMode }: TessellatedMeshProps) {
+export function TessellatedMesh({ mesh, viewMode, material }: TessellatedMeshProps) {
+  const mat = material ?? DEFAULT_MATERIAL;
+  const isTransparent = mat.opacity < 1;
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute(
@@ -37,18 +41,22 @@ export function TessellatedMesh({ mesh, viewMode }: TessellatedMeshProps) {
       <mesh geometry={geometry}>
         {viewMode === "xray" ? (
           <meshPhysicalMaterial
-            color="#6366f1"
+            color={mat.color}
             metalness={0.1}
             roughness={0.4}
             transparent
             opacity={0.3}
             side={THREE.DoubleSide}
+            depthWrite={false}
           />
         ) : (
           <meshStandardMaterial
-            color="#a5b4fc"
-            metalness={0.2}
-            roughness={0.5}
+            color={mat.color}
+            metalness={mat.metalness}
+            roughness={mat.roughness}
+            opacity={mat.opacity}
+            transparent={isTransparent}
+            depthWrite={!isTransparent}
             wireframe={viewMode === "wireframe"}
             side={THREE.DoubleSide}
           />

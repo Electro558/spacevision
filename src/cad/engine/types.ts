@@ -47,12 +47,91 @@ export interface SketchRectangle {
 
 export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle;
 
-export interface SketchConstraint {
+// ── Sketch Constraints — discriminated union ──
+
+export interface HorizontalConstraint {
   id: string;
-  type: string;
-  refs: string[];
-  value?: number | string;
+  type: "horizontal";
+  refs: [string]; // [lineId]
 }
+
+export interface VerticalConstraint {
+  id: string;
+  type: "vertical";
+  refs: [string]; // [lineId]
+}
+
+export interface CoincidentConstraint {
+  id: string;
+  type: "coincident";
+  refs: [string, string]; // [pointId1, pointId2]
+}
+
+export interface PerpendicularConstraint {
+  id: string;
+  type: "perpendicular";
+  refs: [string, string]; // [lineId1, lineId2]
+}
+
+export interface EqualConstraint {
+  id: string;
+  type: "equal";
+  refs: [string, string]; // [entityId1, entityId2]
+}
+
+export interface FixedConstraint {
+  id: string;
+  type: "fixed";
+  refs: [string]; // [pointId]
+}
+
+export interface ParallelConstraint {
+  id: string;
+  type: "parallel";
+  refs: [string, string]; // [lineId1, lineId2]
+}
+
+export interface TangentConstraint {
+  id: string;
+  type: "tangent";
+  refs: [string, string]; // [lineId, circleId]
+}
+
+export interface DistanceConstraint {
+  id: string;
+  type: "distance";
+  refs: [string, string]; // [pointId1, pointId2]
+  value: number;
+}
+
+export interface RadiusConstraint {
+  id: string;
+  type: "radius";
+  refs: [string]; // [entityId]
+  value: number;
+}
+
+export interface AngleConstraint {
+  id: string;
+  type: "angle";
+  refs: [string, string]; // [lineId1, lineId2]
+  value: number;
+}
+
+export type SketchConstraint =
+  | HorizontalConstraint
+  | VerticalConstraint
+  | CoincidentConstraint
+  | PerpendicularConstraint
+  | EqualConstraint
+  | FixedConstraint
+  | ParallelConstraint
+  | TangentConstraint
+  | DistanceConstraint
+  | RadiusConstraint
+  | AngleConstraint;
+
+export type SketchConstraintType = SketchConstraint["type"];
 
 export type SketchPlane = "XY" | "XZ" | "YZ";
 
@@ -195,6 +274,14 @@ export interface Parameter {
   expression: string | null;
 }
 
+export interface MaterialConfig {
+  color: string;        // hex color like "#6366f1"
+  metalness: number;    // 0-1
+  roughness: number;    // 0-1
+  opacity: number;      // 0-1
+  preset: string;       // preset name or "Custom"
+}
+
 export interface CadProject {
   version: string;
   name: string;
@@ -205,7 +292,7 @@ export interface CadProject {
     created: string;
     modified: string;
     author: string;
-    material: string;
+    material: MaterialConfig;
   };
 }
 
@@ -264,7 +351,10 @@ export interface ErrorPayload {
   featureId?: string;
 }
 
-export type CadTool = "select" | "line" | "circle" | "rectangle" | "arc" | "trim" | "mirror" | "offset";
+export type CadTool =
+  | "select" | "line" | "circle" | "rectangle" | "arc" | "trim" | "mirror" | "offset"
+  | "constraint-horizontal" | "constraint-vertical" | "constraint-perpendicular"
+  | "constraint-parallel" | "constraint-equal" | "constraint-fixed";
 export type ViewMode = "shaded" | "wireframe" | "xray" | "measure";
 
 export interface MeasureResult {
@@ -274,6 +364,8 @@ export interface MeasureResult {
   points: [{ x: number; y: number; z: number }, { x: number; y: number; z: number }];
 }
 export type ViewPreset = "iso" | "front" | "back" | "top" | "bottom" | "left" | "right";
+
+export type ConstraintStatus = "fully-constrained" | "under-constrained" | "over-constrained";
 
 export interface CadUIState {
   activeTool: CadTool;
@@ -285,4 +377,5 @@ export interface CadUIState {
   snapEnabled: boolean;
   snapValue: number;
   units: string;
+  constraintStatus: ConstraintStatus;
 }

@@ -1,6 +1,7 @@
 // src/cad/engine/projectSerializer.ts
 
 import type { CadProject, Feature, Parameter } from "./types";
+import { DEFAULT_MATERIAL } from "./materials";
 
 const CURRENT_VERSION = "1.0";
 
@@ -18,7 +19,7 @@ export function createEmptyProject(name = "Untitled"): CadProject {
       created: new Date().toISOString(),
       modified: new Date().toISOString(),
       author: "",
-      material: "",
+      material: DEFAULT_MATERIAL,
     },
   };
 }

@@ -1,15 +1,29 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useCad } from "../context/CadContext";
 import { OcctLoadingScreen } from "./OcctLoadingScreen";
 import { TopToolbar } from "./TopToolbar";
 import { SketchToolbar } from "./SketchToolbar";
 import { CadViewport } from "./CadViewport";
 import { StatusBar } from "./StatusBar";
+import { ShortcutHelp } from "./ShortcutHelp";
+import {
+  createExtrude,
+  createFillet,
+} from "../engine/featureTree";
+import type { SketchFeature, ViewPreset } from "../engine/types";
 
 export function CadWorkspace() {
   const cad = useCad();
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+
+  // Listen for custom event to open shortcut help (from toolbar)
+  useEffect(() => {
+    const handler = () => setShowShortcutHelp(true);
+    window.addEventListener("cad-show-shortcut-help", handler);
+    return () => window.removeEventListener("cad-show-shortcut-help", handler);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -19,29 +33,135 @@ export function CadWorkspace() {
         e.target instanceof HTMLTextAreaElement
       ) return;
 
+      // Modifier combos first
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        e.preventDefault(); cad.undo();
+        e.preventDefault(); cad.undo(); return;
       }
       if (e.key === "z" && (e.ctrlKey || e.metaKey) && e.shiftKey) {
-        e.preventDefault(); cad.redo();
+        e.preventDefault(); cad.redo(); return;
       }
       if (e.key === "s" && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault(); cad.save();
+        e.preventDefault(); cad.save(); return;
       }
+
+      // Don't process single-key shortcuts if modifiers are held
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Escape
       if (e.key === "Escape") {
+        if (showShortcutHelp) { setShowShortcutHelp(false); return; }
         if (cad.uiState.sketchModeActive) cad.setSketchModeActive(false);
         else cad.setSelectedFeatureId(null);
+        return;
       }
+
+      // Delete / Backspace
       if (e.key === "Delete" || e.key === "Backspace") {
         if (cad.uiState.selectedFeatureId) {
           cad.removeFeature(cad.uiState.selectedFeatureId);
           cad.setSelectedFeatureId(null);
         }
+        return;
+      }
+
+      // ? — shortcut help
+      if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcutHelp((prev) => !prev);
+        return;
+      }
+
+      // ---- View shortcuts (always active) ----
+      const viewMap: Record<string, ViewPreset> = {
+        "1": "front",
+        "2": "back",
+        "3": "left",
+        "4": "right",
+        "5": "top",
+        "6": "bottom",
+        "0": "iso",
+      };
+      if (viewMap[e.key]) {
+        window.dispatchEvent(
+          new CustomEvent("cad-set-view", { detail: { preset: viewMap[e.key] } })
+        );
+        return;
+      }
+
+      if (e.key.toLowerCase() === "g") {
+        cad.toggleGrid();
+        return;
+      }
+      if (e.key === " ") {
+        e.preventDefault();
+        cad.toggleSnap();
+        return;
+      }
+
+      // ---- Sketch-mode-only shortcuts ----
+      if (cad.uiState.sketchModeActive) {
+        const toolMap: Record<string, any> = {
+          l: "line",
+          c: "circle",
+          r: "rectangle",
+          a: "arc",
+          t: "trim",
+          m: "mirror",
+          o: "offset",
+          s: "select",
+        };
+        const key = e.key.toLowerCase();
+        if (toolMap[key]) {
+          cad.setActiveTool(toolMap[key]);
+          return;
+        }
+        if (key === "x") {
+          window.dispatchEvent(new CustomEvent("cad-toggle-construction-mode"));
+          return;
+        }
+        return; // Don't fall through to feature shortcuts while in sketch mode
+      }
+
+      // ---- Feature shortcuts (only outside sketch mode) ----
+      const key = e.key.toLowerCase();
+      if (key === "e") {
+        // Extrude
+        const sketches = cad.project.features.filter(
+          (f): f is SketchFeature => f.type === "sketch"
+        );
+        if (sketches.length === 0) {
+          alert("Create a sketch first before extruding.");
+          return;
+        }
+        const lastSketch = sketches[sketches.length - 1];
+        const extrude = createExtrude(
+          `Extrude ${cad.project.features.filter((f) => f.type === "extrude").length + 1}`,
+          lastSketch.id,
+          10,
+          "add"
+        );
+        cad.addFeature(extrude);
+        cad.setSelectedFeatureId(extrude.id);
+        return;
+      }
+      if (key === "f") {
+        // Fillet
+        const hasSolid = cad.project.features.some(
+          (f) => (f.type === "extrude" || f.type === "revolve") && !f.suppressed
+        );
+        if (!hasSolid) {
+          alert("Create a solid feature first.");
+          return;
+        }
+        const fillet = createFillet(2);
+        cad.addFeature(fillet);
+        cad.setSelectedFeatureId(fillet.id);
+        return;
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [cad]);
+  }, [cad, showShortcutHelp]);
 
   if (cad.occtStatus === "loading" || cad.occtStatus === "idle") {
     return <OcctLoadingScreen progress={cad.occtLoadProgress} message={cad.occtLoadMessage} error={null} />;
@@ -457,6 +577,10 @@ export function CadWorkspace() {
       </div>
 
       <StatusBar />
+
+      {showShortcutHelp && (
+        <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />
+      )}
     </div>
   );
 }

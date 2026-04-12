@@ -13,7 +13,10 @@ import { SketchOverlay } from "./SketchOverlay";
 import { MeasureOverlay } from "./MeasureOverlay";
 import { SectionPlane } from "./SectionPlane";
 import { ViewCubeOverlay, VIEW_CAMERA_POSITIONS } from "./ViewCube";
-import type { ViewPreset, SketchFeature, SketchPlane, Sketch, MeasureResult } from "../engine/types";
+import { DimensionOverlay } from "./DimensionOverlay";
+import { ContextMenu } from "./ContextMenu";
+import { DEFAULT_MATERIAL } from "../engine/materials";
+import type { ViewPreset, SketchFeature, SketchPlane, Sketch, MeasureResult, MaterialConfig } from "../engine/types";
 
 /**
  * Converts a 3D intersection point to 2D sketch-plane coordinates.
@@ -276,13 +279,20 @@ function CadScene() {
       <axesHelper args={[5]} />
 
       {/* Tessellated meshes from OCCT */}
-      {cad.meshes.map((mesh, i) => (
-        <TessellatedMesh
-          key={`${mesh.featureId}-${i}`}
-          mesh={mesh}
-          viewMode={cad.uiState.viewMode}
-        />
-      ))}
+      {cad.meshes.map((mesh, i) => {
+        const material: MaterialConfig =
+          cad.project.metadata.material && typeof cad.project.metadata.material === "object"
+            ? cad.project.metadata.material
+            : DEFAULT_MATERIAL;
+        return (
+          <TessellatedMesh
+            key={`${mesh.featureId}-${i}`}
+            mesh={mesh}
+            viewMode={cad.uiState.viewMode}
+            material={material}
+          />
+        );
+      })}
 
       {/* Sketch overlay (when in sketch mode) */}
       {activeSketch && (
@@ -291,6 +301,11 @@ function CadScene() {
           previewPoints={sketchMode.currentPoints.length >= 1 ? sketchMode.currentPoints : undefined}
           activeTool={cad.uiState.activeTool}
         />
+      )}
+
+      {/* Dimension annotations (when in sketch mode) */}
+      {cad.uiState.sketchModeActive && activeSketch && (
+        <DimensionOverlay sketch={activeSketch} />
       )}
 
       {/* Sketch plane raycaster (only active in sketch mode) */}
@@ -361,6 +376,7 @@ function SketchPlaneIndicator({ plane }: { plane: SketchPlane }) {
 
 export function CadViewport() {
   const cad = useCad();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   const handleSetView = useCallback((preset: ViewPreset) => {
     window.dispatchEvent(
@@ -368,8 +384,17 @@ export function CadViewport() {
     );
   }, []);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" onContextMenu={handleContextMenu}>
       <Canvas
         camera={{
           position: [30, 30, 30],
@@ -404,6 +429,15 @@ export function CadViewport() {
         <div className="absolute left-1/2 top-10 -translate-x-1/2 rounded bg-indigo-900/80 px-3 py-1 text-xs text-indigo-200">
           Rebuilding geometry...
         </div>
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={handleCloseContextMenu}
+        />
       )}
     </div>
   );

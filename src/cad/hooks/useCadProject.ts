@@ -10,7 +10,9 @@ import type {
   ViewMode,
   RebuildResultPayload,
   TessellationResult,
+  MaterialConfig,
 } from "../engine/types";
+import { DEFAULT_MATERIAL } from "../engine/materials";
 import {
   createHistory,
   pushState,
@@ -61,6 +63,9 @@ export interface CadProjectState {
   setMeshes: (meshes: TessellationResult[]) => void;
   setIsRebuilding: (v: boolean) => void;
 
+  // Material
+  setMaterial: (material: MaterialConfig) => void;
+
   // Persistence
   save: () => void;
 }
@@ -75,14 +80,20 @@ const defaultUI: CadUIState = {
   snapEnabled: true,
   snapValue: 1,
   units: "mm",
+  constraintStatus: "under-constrained",
 };
 
 export function useCadProject(
   initialProject?: CadProject
 ): CadProjectState {
-  const [project, setProject] = useState<CadProject>(
-    initialProject ?? createEmptyProject()
-  );
+  const [project, setProject] = useState<CadProject>(() => {
+    const proj = initialProject ?? createEmptyProject();
+    // Ensure material is a MaterialConfig object (backward compat with old string format)
+    if (!proj.metadata.material || typeof proj.metadata.material !== "object") {
+      proj.metadata = { ...proj.metadata, material: DEFAULT_MATERIAL };
+    }
+    return proj;
+  });
   const [uiState, setUiState] = useState<CadUIState>(defaultUI);
   const [meshes, setMeshes] = useState<TessellationResult[]>([]);
   const [isRebuilding, setIsRebuilding] = useState(false);
@@ -237,6 +248,16 @@ export function useCadProject(
     requestRebuild,
     setMeshes,
     setIsRebuilding,
+    setMaterial: (material: MaterialConfig) => {
+      setProject((prev) => {
+        const next = {
+          ...prev,
+          metadata: { ...prev.metadata, material },
+        };
+        scheduleSave(next);
+        return next;
+      });
+    },
     save: () => {
       setProject((prev) => {
         saveToLocalStorage(prev);

@@ -11,12 +11,20 @@ import {
   mirrorEntity,
   type Point2D,
 } from "../engine/sketchUtils";
+import {
+  findBestSnap,
+  type SnapResult,
+  type SnapConfig,
+  DEFAULT_SNAP_CONFIG,
+} from "../engine/snapEngine";
 
 interface SketchModeState {
   isDrawing: boolean;
   currentPoints: { x: number; y: number }[];
   previewEntity: SketchEntity | null;
   selectedEntityIds: Set<string>;
+  currentSnap: SnapResult | null;
+  cursorPosition: { x: number; y: number } | null;
 }
 
 const RESET_STATE: SketchModeState = {
@@ -24,18 +32,31 @@ const RESET_STATE: SketchModeState = {
   currentPoints: [],
   previewEntity: null,
   selectedEntityIds: new Set(),
+  currentSnap: null,
+  cursorPosition: null,
 };
 
 export function useSketchMode(
   sketch: Sketch | null,
   activeTool: CadTool,
-  onUpdateSketch: (sketch: Sketch) => void
+  onUpdateSketch: (sketch: Sketch) => void,
+  snapEnabled: boolean = true,
+  snapValue: number = 1
 ) {
   const [state, setState] = useState<SketchModeState>(RESET_STATE);
 
   const startPointRef = useRef<{ x: number; y: number } | null>(null);
   const arcPointsRef = useRef<{ x: number; y: number }[]>([]);
   const constructionRef = useRef(false);
+
+  // Build snap config from props
+  const snapConfigRef = useRef<SnapConfig>(DEFAULT_SNAP_CONFIG);
+  snapConfigRef.current = {
+    gridEnabled: snapEnabled,
+    entityEnabled: snapEnabled,
+    gridSize: snapValue,
+    snapDistance: 1.0,
+  };
 
   // Listen for construction mode toggle from SketchToolbar
   useEffect(() => {

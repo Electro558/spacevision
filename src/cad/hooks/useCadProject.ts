@@ -66,6 +66,9 @@ export interface CadProjectState {
   // Material
   setMaterial: (material: MaterialConfig) => void;
 
+  // Rollback
+  setRollbackIndex: (index: number) => void;
+
   // Persistence
   save: () => void;
 }
@@ -81,6 +84,7 @@ const defaultUI: CadUIState = {
   snapValue: 1,
   units: "mm",
   constraintStatus: "under-constrained",
+  rollbackIndex: -1,
 };
 
 export function useCadProject(
@@ -257,6 +261,10 @@ export function useCadProject(
         scheduleSave(next);
         return next;
       });
+    },
+    setRollbackIndex: (index) => {
+      setUiState((prev) => ({ ...prev, rollbackIndex: index }));
+      requestRebuild();
     },
     save: () => {
       setProject((prev) => {

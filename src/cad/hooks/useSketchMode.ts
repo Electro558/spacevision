@@ -359,6 +359,228 @@ export function useSketchMode(
         }
       }
 
+      // ── Spline Tool ──
+      if (activeTool === "spline") {
+        const splinePoints = arcPointsRef.current; // reuse arcPointsRef for spline control points
+
+        if (splinePoints.length > 0) {
+          const lastPt = splinePoints[splinePoints.length - 1];
+          const dist = Math.sqrt((x - lastPt.x) ** 2 + (y - lastPt.y) ** 2);
+
+          // Double-click detection: finish spline
+          if (dist < 0.5 && splinePoints.length >= 2) {
+            const newPoints: SketchPoint[] = splinePoints.map(p => ({
+              id: newPointId(), x: p.x, y: p.y,
+            }));
+            const spline: SketchEntity = {
+              id: newEntityId(),
+              type: "spline" as const,
+              controlPointIds: newPoints.map(p => p.id),
+              construction: conFlag,
+            } as SketchEntity;
+            onUpdateSketch({
+              ...sketch,
+              points: [...sketch.points, ...newPoints],
+              entities: [...sketch.entities, spline],
+            });
+            arcPointsRef.current = [];
+            startPointRef.current = null;
+            setState(RESET_STATE);
+            return;
+          }
+        }
+
+        // Add control point
+        splinePoints.push({ x, y });
+        arcPointsRef.current = splinePoints;
+        if (!startPointRef.current) {
+          startPointRef.current = { x, y };
+        }
+        setState(prev => ({
+          ...prev,
+          isDrawing: true,
+          currentPoints: [...splinePoints],
+        }));
+      }
+
+      // ── Sketch Fillet Tool ──
+      if (activeTool === "sketch-fillet") {
+        const FILLET_RADIUS = 2;
+        const lineEntities = sketch.entities.filter(e => e.type === "line" && !e.construction);
+        if (lineEntities.length < 2) return;
+
+        const withDist = lineEntities.map(e => ({
+          entity: e,
+          dist: distanceToEntity(e, { x, y }, sketch.points),
+        })).sort((a, b) => a.dist - b.dist);
+
+        if (withDist.length < 2 || withDist[0].dist > 3.0) return;
+
+        const line1 = withDist[0].entity as import("../engine/types").SketchLine;
+        const line2 = withDist[1].entity as import("../engine/types").SketchLine;
+
+        const ptMap = new Map(sketch.points.map(p => [p.id, p]));
+        const l1s = ptMap.get(line1.startId);
+        const l1e = ptMap.get(line1.endId);
+        const l2s = ptMap.get(line2.startId);
+        const l2e = ptMap.get(line2.endId);
+        if (!l1s || !l1e || !l2s || !l2e) return;
+
+        const pairs = [
+          { p1: l1s, p2: l2s, p1Id: line1.startId, p2Id: line2.startId, end1: "start" as const, end2: "start" as const },
+          { p1: l1s, p2: l2e, p1Id: line1.startId, p2Id: line2.endId, end1: "start" as const, end2: "end" as const },
+          { p1: l1e, p2: l2s, p1Id: line1.endId, p2Id: line2.startId, end1: "end" as const, end2: "start" as const },
+          { p1: l1e, p2: l2e, p1Id: line1.endId, p2Id: line2.endId, end1: "end" as const, end2: "end" as const },
+        ];
+
+        let bestPair = pairs[0];
+        let bestDist = Infinity;
+        for (const pair of pairs) {
+          const d = Math.sqrt((pair.p1.x - pair.p2.x) ** 2 + (pair.p1.y - pair.p2.y) ** 2);
+          if (d < bestDist) { bestDist = d; bestPair = pair; }
+        }
+
+        if (bestDist > 2.0) return;
+
+        const corner = { x: (bestPair.p1.x + bestPair.p2.x) / 2, y: (bestPair.p1.y + bestPair.p2.y) / 2 };
+        const other1 = bestPair.end1 === "start" ? l1e : l1s;
+        const other2 = bestPair.end2 === "start" ? l2e : l2s;
+
+        const dir1 = { x: other1.x - corner.x, y: other1.y - corner.y };
+        const len1 = Math.sqrt(dir1.x ** 2 + dir1.y ** 2);
+        const dir2 = { x: other2.x - corner.x, y: other2.y - corner.y };
+        const len2 = Math.sqrt(dir2.x ** 2 + dir2.y ** 2);
+
+        if (len1 < 0.1 || len2 < 0.1) return;
+
+        const filletDist = Math.min(FILLET_RADIUS, len1 * 0.4, len2 * 0.4);
+
+        const fp1 = { x: corner.x + (dir1.x / len1) * filletDist, y: corner.y + (dir1.y / len1) * filletDist };
+        const fp2 = { x: corner.x + (dir2.x / len2) * filletDist, y: corner.y + (dir2.y / len2) * filletDist };
+
+        const bisect = { x: dir1.x / len1 + dir2.x / len2, y: dir1.y / len1 + dir2.y / len2 };
+        const bisectLen = Math.sqrt(bisect.x ** 2 + bisect.y ** 2);
+        if (bisectLen < 0.01) return;
+
+        const arcRadius = Math.sqrt((fp1.x - fp2.x) ** 2 + (fp1.y - fp2.y) ** 2) / 2;
+        const arcCenter = { x: (fp1.x + fp2.x) / 2, y: (fp1.y + fp2.y) / 2 };
+
+        const centerPt: SketchPoint = { id: newPointId(), x: arcCenter.x, y: arcCenter.y };
+        const startPt: SketchPoint = { id: newPointId(), x: fp1.x, y: fp1.y };
+        const endPt: SketchPoint = { id: newPointId(), x: fp2.x, y: fp2.y };
+        const filletArc: SketchEntity = {
+          id: newEntityId(), type: "arc",
+          centerId: centerPt.id, startId: startPt.id, endId: endPt.id,
+          radius: arcRadius,
+        };
+
+        const cornerPt1: SketchPoint = { id: newPointId(), x: fp1.x, y: fp1.y };
+        const cornerPt2: SketchPoint = { id: newPointId(), x: fp2.x, y: fp2.y };
+
+        let updatedEntities = sketch.entities.map(e => {
+          if (e.id === line1.id && e.type === "line") {
+            if (bestPair.end1 === "start") return { ...e, startId: cornerPt1.id };
+            else return { ...e, endId: cornerPt1.id };
+          }
+          if (e.id === line2.id && e.type === "line") {
+            if (bestPair.end2 === "start") return { ...e, startId: cornerPt2.id };
+            else return { ...e, endId: cornerPt2.id };
+          }
+          return e;
+        }) as SketchEntity[];
+
+        updatedEntities.push(filletArc);
+
+        onUpdateSketch({
+          ...sketch,
+          points: [...sketch.points, centerPt, startPt, endPt, cornerPt1, cornerPt2],
+          entities: updatedEntities,
+        });
+      }
+
+      // ── Sketch Chamfer Tool ──
+      if (activeTool === "sketch-chamfer") {
+        const CHAMFER_DIST = 2;
+        const lineEntities = sketch.entities.filter(e => e.type === "line" && !e.construction);
+        if (lineEntities.length < 2) return;
+
+        const withDist = lineEntities.map(e => ({
+          entity: e,
+          dist: distanceToEntity(e, { x, y }, sketch.points),
+        })).sort((a, b) => a.dist - b.dist);
+
+        if (withDist.length < 2 || withDist[0].dist > 3.0) return;
+
+        const line1 = withDist[0].entity as import("../engine/types").SketchLine;
+        const line2 = withDist[1].entity as import("../engine/types").SketchLine;
+
+        const ptMap = new Map(sketch.points.map(p => [p.id, p]));
+        const l1s = ptMap.get(line1.startId);
+        const l1e = ptMap.get(line1.endId);
+        const l2s = ptMap.get(line2.startId);
+        const l2e = ptMap.get(line2.endId);
+        if (!l1s || !l1e || !l2s || !l2e) return;
+
+        const pairs = [
+          { p1: l1s, p2: l2s, end1: "start" as const, end2: "start" as const },
+          { p1: l1s, p2: l2e, end1: "start" as const, end2: "end" as const },
+          { p1: l1e, p2: l2s, end1: "end" as const, end2: "start" as const },
+          { p1: l1e, p2: l2e, end1: "end" as const, end2: "end" as const },
+        ];
+
+        let bestPair = pairs[0];
+        let bestDist2 = Infinity;
+        for (const pair of pairs) {
+          const d = Math.sqrt((pair.p1.x - pair.p2.x) ** 2 + (pair.p1.y - pair.p2.y) ** 2);
+          if (d < bestDist2) { bestDist2 = d; bestPair = pair; }
+        }
+        if (bestDist2 > 2.0) return;
+
+        const corner = { x: (bestPair.p1.x + bestPair.p2.x) / 2, y: (bestPair.p1.y + bestPair.p2.y) / 2 };
+        const other1 = bestPair.end1 === "start" ? l1e : l1s;
+        const other2 = bestPair.end2 === "start" ? l2e : l2s;
+
+        const dir1 = { x: other1.x - corner.x, y: other1.y - corner.y };
+        const len1 = Math.sqrt(dir1.x ** 2 + dir1.y ** 2);
+        const dir2 = { x: other2.x - corner.x, y: other2.y - corner.y };
+        const len2 = Math.sqrt(dir2.x ** 2 + dir2.y ** 2);
+
+        if (len1 < 0.1 || len2 < 0.1) return;
+
+        const chamferDist = Math.min(CHAMFER_DIST, len1 * 0.4, len2 * 0.4);
+        const cp1 = { x: corner.x + (dir1.x / len1) * chamferDist, y: corner.y + (dir1.y / len1) * chamferDist };
+        const cp2 = { x: corner.x + (dir2.x / len2) * chamferDist, y: corner.y + (dir2.y / len2) * chamferDist };
+
+        const chamferPt1: SketchPoint = { id: newPointId(), x: cp1.x, y: cp1.y };
+        const chamferPt2: SketchPoint = { id: newPointId(), x: cp2.x, y: cp2.y };
+        const chamferLine: SketchEntity = {
+          id: newEntityId(), type: "line", startId: chamferPt1.id, endId: chamferPt2.id,
+        };
+
+        const newCornerPt1: SketchPoint = { id: newPointId(), x: cp1.x, y: cp1.y };
+        const newCornerPt2: SketchPoint = { id: newPointId(), x: cp2.x, y: cp2.y };
+
+        let updatedEntities = sketch.entities.map(e => {
+          if (e.id === line1.id && e.type === "line") {
+            if (bestPair.end1 === "start") return { ...e, startId: newCornerPt1.id };
+            else return { ...e, endId: newCornerPt1.id };
+          }
+          if (e.id === line2.id && e.type === "line") {
+            if (bestPair.end2 === "start") return { ...e, startId: newCornerPt2.id };
+            else return { ...e, endId: newCornerPt2.id };
+          }
+          return e;
+        }) as SketchEntity[];
+
+        updatedEntities.push(chamferLine);
+
+        onUpdateSketch({
+          ...sketch,
+          points: [...sketch.points, chamferPt1, chamferPt2, newCornerPt1, newCornerPt2],
+          entities: updatedEntities,
+        });
+      }
+
       if (activeTool === "select") {
         setState((prev) => ({ ...prev, selectedEntityIds: new Set() }));
       }
@@ -371,6 +593,18 @@ export function useSketchMode(
    */
   const handleMouseMove = useCallback(
     (x: number, y: number) => {
+      // Spline preview works even before isDrawing is fully set
+      if (activeTool === "spline") {
+        const splinePoints = arcPointsRef.current;
+        if (splinePoints.length > 0) {
+          setState(prev => ({
+            ...prev,
+            currentPoints: [...splinePoints, { x, y }],
+          }));
+        }
+        return;
+      }
+
       if (!state.isDrawing || !startPointRef.current) return;
 
       if (activeTool === "arc") {
@@ -480,6 +714,7 @@ function getEntityPointIds(entity: SketchEntity): string[] {
     case "circle": return [entity.centerId];
     case "arc": return [entity.centerId, entity.startId, entity.endId];
     case "rectangle": return [entity.originId];
+    case "spline": return entity.controlPointIds;
   }
 }
 
@@ -521,6 +756,18 @@ function distanceToEntity(
       if (!c) return Infinity;
       const r = typeof entity.radius === "number" ? entity.radius : 5;
       return pointToCircleDistance(point, c, r);
+    }
+    case "spline": {
+      const controlPts = entity.controlPointIds
+        .map((id: string) => ptMap.get(id))
+        .filter((p): p is SketchPoint => !!p);
+      if (controlPts.length < 2) return Infinity;
+      let minDist = Infinity;
+      for (let i = 0; i < controlPts.length - 1; i++) {
+        const d = pointToSegmentDistance(point, controlPts[i], controlPts[i + 1]).distance;
+        if (d < minDist) minDist = d;
+      }
+      return minDist;
     }
   }
 }

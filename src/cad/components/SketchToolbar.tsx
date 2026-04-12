@@ -13,6 +13,9 @@ const SKETCH_TOOLS: { tool: CadTool; label: string; icon: string }[] = [
   { tool: "trim", label: "Trim", icon: "✂" },
   { tool: "mirror", label: "Mirror", icon: "⟺" },
   { tool: "offset", label: "Offset", icon: "⟐" },
+  { tool: "spline", label: "Spline", icon: "〰" },
+  { tool: "sketch-fillet", label: "Fillet", icon: "◠" },
+  { tool: "sketch-chamfer", label: "Chamfer", icon: "◇" },
 ];
 
 export function SketchToolbar() {

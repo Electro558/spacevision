@@ -182,10 +182,13 @@ export function CadWorkspace() {
           {cad.project.features.length === 0 ? (
             <p className="text-gray-600">No features yet.</p>
           ) : (
-            cad.project.features.map((feature) => (
+            cad.project.features.map((feature, featureIndex) => {
+              const isRolledBack = cad.uiState.rollbackIndex >= 0 && featureIndex > cad.uiState.rollbackIndex;
+              return (
               <div
                 key={feature.id}
                 className={`mb-0.5 flex items-center rounded ${
+                  isRolledBack ? "opacity-30" :
                   cad.uiState.selectedFeatureId === feature.id
                     ? "bg-indigo-900/50 text-white"
                     : feature.suppressed ? "text-gray-600"
@@ -223,10 +226,43 @@ export function CadWorkspace() {
                     feature.suppressed ? "line-through" : ""
                   }`}
                 >
-                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : feature.type === "loft" ? "⋈" : feature.type === "sweep" ? "↝" : feature.type === "shell" ? "☐" : feature.type === "linearPattern" ? "⫼" : feature.type === "circularPattern" ? "◎" : feature.type === "mirrorBody" ? "⟺" : "●"} {feature.name}
+                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : feature.type === "loft" ? "⋈" : feature.type === "sweep" ? "↝" : feature.type === "shell" ? "☐" : feature.type === "linearPattern" ? "⫼" : feature.type === "circularPattern" ? "◎" : feature.type === "mirrorBody" ? "⟺" : feature.type === "hole" ? "⊙" : feature.type === "boolean" ? "⊕" : "●"} {feature.name}
                 </span>
               </div>
-            ))
+              );
+            })
+          )}
+          {/* Rollback bar */}
+          {cad.project.features.length > 0 && (
+            <div className="mt-2 mb-2">
+              <div className="flex items-center justify-between text-gray-500 mb-1">
+                <span>Rollback</span>
+                {cad.uiState.rollbackIndex >= 0 && (
+                  <button
+                    onClick={() => cad.setRollbackIndex(-1)}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={cad.project.features.length - 1}
+                value={cad.uiState.rollbackIndex >= 0 ? cad.uiState.rollbackIndex : cad.project.features.length - 1}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  cad.setRollbackIndex(val === cad.project.features.length - 1 ? -1 : val);
+                }}
+                className="w-full accent-indigo-500"
+              />
+              <div className="mt-0.5 text-[10px] text-gray-600">
+                {cad.uiState.rollbackIndex >= 0
+                  ? `Showing ${cad.uiState.rollbackIndex + 1} of ${cad.project.features.length} features`
+                  : `All ${cad.project.features.length} features`}
+              </div>
+            </div>
           )}
           <div className="mb-2 mt-4 font-bold text-indigo-400">Parameters</div>
           {Object.entries(cad.project.parameters).map(([name, param]) => (
@@ -266,6 +302,29 @@ export function CadWorkspace() {
                       onChange={(e) => cad.updateFeature(feature.id, { name: e.target.value })}
                     />
                   </div>
+                  {/* Per-feature color override */}
+                  {feature.type !== "sketch" && (
+                    <div className="mb-2">
+                      <label className="text-gray-500">Color Override</label>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <input
+                          type="color"
+                          className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent"
+                          value={(feature as any).colorOverride || cad.project.metadata.material?.color || "#6366f1"}
+                          onChange={(e) => cad.updateFeature(feature.id, { colorOverride: e.target.value } as any)}
+                        />
+                        <span className="text-gray-400 text-[10px]">{(feature as any).colorOverride || "Default"}</span>
+                        {(feature as any).colorOverride && (
+                          <button
+                            onClick={() => cad.updateFeature(feature.id, { colorOverride: undefined } as any)}
+                            className="text-[10px] text-red-400 hover:text-red-300"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {feature.type === "sketch" && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-gray-400">
@@ -321,6 +380,16 @@ export function CadWorkspace() {
                           <option value="add">Add (Union)</option>
                           <option value="cut">Cut (Subtract)</option>
                         </select>
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Draft Angle (deg)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={feature.draftAngle ?? 0}
+                          onChange={(e) => cad.updateFeature(feature.id, { draftAngle: parseFloat(e.target.value) || 0 })}
+                        />
                       </div>
                     </div>
                   )}
@@ -556,6 +625,144 @@ export function CadWorkspace() {
                           <option value="XZ">XZ Plane</option>
                           <option value="YZ">YZ Plane</option>
                         </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "hole" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Hole Type</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.holeType}
+                          onChange={(e) => cad.updateFeature(feature.id, { holeType: e.target.value as any })}
+                        >
+                          <option value="simple">Simple</option>
+                          <option value="counterbore">Counterbore</option>
+                          <option value="countersink">Countersink</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Diameter</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={typeof feature.diameter === 'number' ? feature.diameter : ''}
+                          onChange={(e) => cad.updateFeature(feature.id, { diameter: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Depth</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={typeof feature.depth === 'number' ? feature.depth : ''}
+                          onChange={(e) => cad.updateFeature(feature.id, { depth: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Position X</label>
+                        <input
+                          type="number"
+                          step="1"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={feature.position.x}
+                          onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, x: parseFloat(e.target.value) || 0 } } as any)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Position Y</label>
+                        <input
+                          type="number"
+                          step="1"
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          value={feature.position.y}
+                          onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, y: parseFloat(e.target.value) || 0 } } as any)}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-gray-500">Plane</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.plane}
+                          onChange={(e) => cad.updateFeature(feature.id, { plane: e.target.value as any })}
+                        >
+                          <option value="XY">XY</option>
+                          <option value="XZ">XZ</option>
+                          <option value="YZ">YZ</option>
+                        </select>
+                      </div>
+                      {feature.holeType === "counterbore" && (
+                        <>
+                          <div>
+                            <label className="text-gray-500">CB Diameter</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              value={feature.counterboreDiameter ?? 10}
+                              onChange={(e) => cad.updateFeature(feature.id, { counterboreDiameter: parseFloat(e.target.value) || 0 } as any)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-500">CB Depth</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              value={feature.counterboreDepth ?? 3}
+                              onChange={(e) => cad.updateFeature(feature.id, { counterboreDepth: parseFloat(e.target.value) || 0 } as any)}
+                            />
+                          </div>
+                        </>
+                      )}
+                      {feature.holeType === "countersink" && (
+                        <>
+                          <div>
+                            <label className="text-gray-500">CS Diameter</label>
+                            <input
+                              type="number"
+                              step="0.5"
+                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              value={feature.countersinkDiameter ?? 10}
+                              onChange={(e) => cad.updateFeature(feature.id, { countersinkDiameter: parseFloat(e.target.value) || 0 } as any)}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-500">CS Angle (deg)</label>
+                            <input
+                              type="number"
+                              step="1"
+                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              value={feature.countersinkAngle ?? 82}
+                              onChange={(e) => cad.updateFeature(feature.id, { countersinkAngle: parseFloat(e.target.value) || 82 } as any)}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {feature.type === "boolean" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="text-gray-500">Operation</label>
+                        <select
+                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          value={feature.operation}
+                          onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
+                        >
+                          <option value="union">Union</option>
+                          <option value="subtract">Subtract</option>
+                          <option value="intersect">Intersect</option>
+                        </select>
+                      </div>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Target</span><span className="text-green-400 truncate max-w-20">{feature.targetFeatureId.slice(-6)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Tool</span><span className="text-green-400 truncate max-w-20">{feature.toolFeatureId.slice(-6)}</span>
                       </div>
                     </div>
                   )}

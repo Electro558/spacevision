@@ -152,6 +152,46 @@ export function SketchOverlay({
         const pts = generateArcPoints(center, r, startAngle, endAngle, sketch.plane);
         segments.push(pts);
         isConstruction.push(isCon);
+      } else if (entity.type === "spline") {
+        const controlPts = entity.controlPointIds
+          .map((id: string) => pointMap.get(id))
+          .filter((p): p is { x: number; y: number } => !!p);
+        if (controlPts.length < 2) continue;
+
+        // Generate smooth curve through control points using Catmull-Rom interpolation
+        const curvePts: THREE.Vector3[] = [];
+        const numSegments = 20;
+
+        for (let i = 0; i < controlPts.length - 1; i++) {
+          const p0 = controlPts[Math.max(0, i - 1)];
+          const p1 = controlPts[i];
+          const p2 = controlPts[i + 1];
+          const p3 = controlPts[Math.min(controlPts.length - 1, i + 2)];
+
+          for (let t = 0; t <= numSegments; t++) {
+            const tt = t / numSegments;
+            const tt2 = tt * tt;
+            const tt3 = tt2 * tt;
+
+            const cx = 0.5 * ((2 * p1.x) +
+              (-p0.x + p2.x) * tt +
+              (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * tt2 +
+              (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * tt3);
+            const cy = 0.5 * ((2 * p1.y) +
+              (-p0.y + p2.y) * tt +
+              (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * tt2 +
+              (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * tt3);
+
+            curvePts.push(to3D(sketch.plane, cx, cy));
+          }
+        }
+
+        if (entity.closed && controlPts.length >= 3) {
+          curvePts.push(to3D(sketch.plane, controlPts[0].x, controlPts[0].y));
+        }
+
+        segments.push(curvePts);
+        isConstruction.push(isCon);
       } else if (entity.type === "line") {
         const start = pointMap.get(entity.startId);
         const end = pointMap.get(entity.endId);
@@ -230,6 +270,26 @@ export function SketchOverlay({
         const endAngle = Math.atan2(y2 - cy, x2 - cx);
         return generateArcPoints({ x: cx, y: cy }, r, startAngle, endAngle, sketch.plane);
       }
+    }
+    if (activeTool === "spline") {
+      if (previewPoints.length < 2) return null;
+      const curvePts: THREE.Vector3[] = [];
+      for (let i = 0; i < previewPoints.length - 1; i++) {
+        const p0 = previewPoints[Math.max(0, i - 1)];
+        const p1 = previewPoints[i];
+        const p2 = previewPoints[i + 1];
+        const p3 = previewPoints[Math.min(previewPoints.length - 1, i + 2)];
+        const numSeg = 20;
+        for (let t = 0; t <= numSeg; t++) {
+          const tt = t / numSeg;
+          const tt2 = tt * tt;
+          const tt3 = tt2 * tt;
+          const cx = 0.5 * ((2*p1.x) + (-p0.x+p2.x)*tt + (2*p0.x-5*p1.x+4*p2.x-p3.x)*tt2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*tt3);
+          const cy = 0.5 * ((2*p1.y) + (-p0.y+p2.y)*tt + (2*p0.y-5*p1.y+4*p2.y-p3.y)*tt2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*tt3);
+          curvePts.push(to3D(sketch.plane, cx, cy));
+        }
+      }
+      return curvePts;
     }
     return null;
   }, [previewPoints, activeTool, sketch.plane]);

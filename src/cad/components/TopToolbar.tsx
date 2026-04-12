@@ -14,6 +14,7 @@ import {
   createLinearPattern,
   createCircularPattern,
   createMirrorBody,
+  createHole,
 } from "../engine/featureTree";
 import { createParameter } from "../engine/parameterRegistry";
 import { downloadProject, loadProjectFromFile } from "../engine/projectSerializer";
@@ -187,6 +188,33 @@ export function TopToolbar() {
     setOpenMenu(null);
   };
 
+  const handleHole = () => {
+    const hasSolid = cad.project.features.some(
+      f => (f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Hole requires an existing solid.");
+      return;
+    }
+    const hole = createHole("simple", 5, 10, "XY");
+    cad.addFeature(hole);
+    cad.setSelectedFeatureId(hole.id);
+    setOpenMenu(null);
+  };
+
+  const handleImportStep = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".step,.stp,.STEP,.STP";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      alert("STEP import: File selected - " + file.name + ". Full STEP import requires OCCT WASM reader integration (coming soon).");
+    };
+    input.click();
+    setOpenMenu(null);
+  };
+
   const handleSaveFile = () => {
     downloadProject(cad.project);
     setOpenMenu(null);
@@ -219,6 +247,7 @@ export function TopToolbar() {
       items: [
         { label: "New Project", action: () => { window.location.reload(); }, shortcut: "Ctrl+N" },
         { label: "Open .svcp...", action: handleOpenFile, shortcut: "Ctrl+O" },
+        { label: "Import STEP...", action: handleImportStep },
         { label: "Save to File", action: handleSaveFile, shortcut: "Ctrl+S" },
         { label: "Export STEP", action: () => { cad.exportProject("step"); setOpenMenu(null); } },
         { label: "Export STL", action: () => { cad.exportProject("stl"); setOpenMenu(null); } },
@@ -250,6 +279,8 @@ export function TopToolbar() {
         { label: "Linear Pattern", action: handleLinearPattern },
         { label: "Circular Pattern", action: handleCircularPattern },
         { label: "Mirror Body", action: handleMirrorBody },
+        { label: "─────────", action: () => {} },
+        { label: "Hole Wizard", action: handleHole },
       ],
     },
     {

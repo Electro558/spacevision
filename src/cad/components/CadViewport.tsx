@@ -280,10 +280,15 @@ function CadScene() {
 
       {/* Tessellated meshes from OCCT */}
       {cad.meshes.map((mesh, i) => {
-        const material: MaterialConfig =
+        const baseMaterial: MaterialConfig =
           cad.project.metadata.material && typeof cad.project.metadata.material === "object"
             ? cad.project.metadata.material
             : DEFAULT_MATERIAL;
+        const feature = cad.project.features.find(f => f.id === mesh.featureId);
+        const colorOverride = (feature as any)?.colorOverride;
+        const material: MaterialConfig = colorOverride
+          ? { ...baseMaterial, color: colorOverride }
+          : baseMaterial;
         return (
           <TessellatedMesh
             key={`${mesh.featureId}-${i}`}

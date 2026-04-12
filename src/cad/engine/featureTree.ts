@@ -1,6 +1,6 @@
 // src/cad/engine/featureTree.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, BooleanFeature, HoleFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
 
 let counter = 0;
 
@@ -276,6 +276,47 @@ export function createMirrorBody(plane: "XY" | "XZ" | "YZ" = "XY"): MirrorBodyFe
 }
 
 /**
+ * Creates a boolean feature that combines two bodies.
+ */
+export function createBoolean(
+  operation: "union" | "subtract" | "intersect",
+  targetFeatureId: string,
+  toolFeatureId: string
+): BooleanFeature {
+  return {
+    id: newFeatureId(),
+    type: "boolean",
+    name: `Boolean ${Date.now() % 1000}`,
+    suppressed: false,
+    operation,
+    targetFeatureId,
+    toolFeatureId,
+  };
+}
+
+/**
+ * Creates a hole feature that cuts a hole in the current solid.
+ */
+export function createHole(
+  holeType: "simple" | "counterbore" | "countersink" = "simple",
+  diameter: number = 5,
+  depth: number = 10,
+  plane: "XY" | "XZ" | "YZ" = "XY"
+): HoleFeature {
+  return {
+    id: newFeatureId(),
+    type: "hole",
+    name: `Hole ${Date.now() % 1000}`,
+    suppressed: false,
+    holeType,
+    diameter,
+    depth,
+    position: { x: 0, y: 0 },
+    plane,
+  };
+}
+
+/**
  * Appends a feature to the end of the feature list.
  */
 export function appendFeature(features: Feature[], feature: Feature): Feature[] {
@@ -296,6 +337,7 @@ export function removeFeature(features: Feature[], featureId: string): Feature[]
     if (f.type === "loft" && f.sketchIds.includes(featureId)) return false;
     if (f.type === "linearPattern" && f.sourceFeatureId === featureId) return false;
     if (f.type === "circularPattern" && f.sourceFeatureId === featureId) return false;
+    if (f.type === "boolean" && (f.targetFeatureId === featureId || f.toolFeatureId === featureId)) return false;
     return true;
   });
 }

@@ -32,9 +32,15 @@ export function CadProvider({
     let cancelled = false;
     projectState.setIsRebuilding(true);
 
+    // Compute effective features (rollback support)
+    const rollbackIdx = projectState.uiState.rollbackIndex;
+    const effectiveFeatures = rollbackIdx >= 0
+      ? projectState.project.features.slice(0, rollbackIdx + 1)
+      : projectState.project.features;
+
     worker
       .rebuild({
-        features: projectState.project.features,
+        features: effectiveFeatures,
         parameters: projectState.project.parameters,
       })
       .then((result) => {
@@ -53,6 +59,7 @@ export function CadProvider({
   }, [
     projectState.project.features,
     projectState.project.parameters,
+    projectState.uiState.rollbackIndex,
     worker.status,
   ]);
 

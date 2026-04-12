@@ -137,6 +137,12 @@ function getMidpoint(
       const h = typeof entity.height === "number" ? entity.height : 10;
       return { x: o.x + w / 2, y: o.y + h / 2 };
     }
+    case "spline": {
+      if (entity.controlPointIds.length === 0) return null;
+      const midIdx = Math.floor(entity.controlPointIds.length / 2);
+      const mid = pointMap.get(entity.controlPointIds[midIdx]);
+      return mid ?? null;
+    }
   }
 }
 

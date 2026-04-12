@@ -45,7 +45,15 @@ export interface SketchRectangle {
   construction?: boolean;
 }
 
-export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle;
+export interface SketchSpline {
+  id: string;
+  type: "spline";
+  controlPointIds: string[];
+  closed?: boolean;
+  construction?: boolean;
+}
+
+export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle | SketchSpline;
 
 // ── Sketch Constraints — discriminated union ──
 
@@ -162,6 +170,8 @@ export interface ExtrudeFeature {
   depth: number | string;
   direction: "normal" | "reverse" | "symmetric";
   operation: "add" | "cut";
+  draftAngle?: number; // degrees, for tapered extrusions
+  thinExtrude?: { enabled: boolean; thickness: number }; // for thin-walled extrusions
 }
 
 export interface RevolveFeature {
@@ -254,6 +264,34 @@ export interface MirrorBodyFeature {
   plane: "XY" | "XZ" | "YZ";
 }
 
+export interface BooleanFeature {
+  id: string;
+  type: "boolean";
+  name: string;
+  suppressed: boolean;
+  operation: "union" | "subtract" | "intersect";
+  targetFeatureId: string; // first body
+  toolFeatureId: string;   // second body
+}
+
+export interface HoleFeature {
+  id: string;
+  type: "hole";
+  name: string;
+  suppressed: boolean;
+  holeType: "simple" | "counterbore" | "countersink";
+  diameter: number | string;
+  depth: number | string;
+  position: { x: number; y: number }; // on sketch plane
+  plane: "XY" | "XZ" | "YZ";
+  // Counterbore specific
+  counterboreDiameter?: number;
+  counterboreDepth?: number;
+  // Countersink specific
+  countersinkDiameter?: number;
+  countersinkAngle?: number; // degrees
+}
+
 export type Feature =
   | SketchFeature
   | ExtrudeFeature
@@ -265,7 +303,9 @@ export type Feature =
   | ShellFeature
   | LinearPatternFeature
   | CircularPatternFeature
-  | MirrorBodyFeature;
+  | MirrorBodyFeature
+  | BooleanFeature
+  | HoleFeature;
 
 export interface Parameter {
   name: string;
@@ -353,6 +393,7 @@ export interface ErrorPayload {
 
 export type CadTool =
   | "select" | "line" | "circle" | "rectangle" | "arc" | "trim" | "mirror" | "offset"
+  | "spline" | "sketch-fillet" | "sketch-chamfer"
   | "constraint-horizontal" | "constraint-vertical" | "constraint-perpendicular"
   | "constraint-parallel" | "constraint-equal" | "constraint-fixed";
 export type ViewMode = "shaded" | "wireframe" | "xray" | "measure";
@@ -378,4 +419,5 @@ export interface CadUIState {
   snapValue: number;
   units: string;
   constraintStatus: ConstraintStatus;
+  rollbackIndex: number; // -1 means no rollback (use all features)
 }

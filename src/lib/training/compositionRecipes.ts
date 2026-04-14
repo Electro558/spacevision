@@ -58,7 +58,7 @@ export const RECIPES: CompositionRecipe[] = [
       { tool: "add_object", input: { name: "Chair Leg FL", type: "box", position: [-0.2, 0.22, 0.2], scale: [0.04, 0.44, 0.04], color: "#7A5230", roughness: 0.8, metalness: 0 } },
       { tool: "add_object", input: { name: "Chair Leg FR", type: "box", position: [0.2, 0.22, 0.2], scale: [0.04, 0.44, 0.04], color: "#7A5230", roughness: 0.8, metalness: 0 } },
       { tool: "add_object", input: { name: "Chair Leg BL", type: "box", position: [-0.2, 0.22, -0.2], scale: [0.04, 0.44, 0.04], color: "#7A5230", roughness: 0.8, metalness: 0 } },
-      { tool: "add_object", input: { name: "Chair Leg BR", type: "box", position: [0.2, 0.22, -0.2], scale: [0.04, 0.44, 0.04], color: "#7A5230", roughness: 0.8, metalness: 0 } },
+      { tool: "add_object", input: { name: "Chair Leg BR", type: "box", position: [0.2, 0.22, -0.2], scale: [0.04, 0.44, 0.04], color: "#b45a0e", roughness: 0.8, metalness: 0 } },
       { tool: "add_object", input: { name: "Chair Backrest", type: "box", position: [0, 0.72, -0.22], scale: [0.5, 0.5, 0.04], color: "#8B5E3C", roughness: 0.8, metalness: 0 } },
     ],
   },

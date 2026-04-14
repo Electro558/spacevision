@@ -192,6 +192,60 @@ export function SketchOverlay({
 
         segments.push(curvePts);
         isConstruction.push(isCon);
+      } else if (entity.type === "polygon") {
+        const center = pointMap.get(entity.centerId);
+        if (!center) continue;
+        const r = entity.radius;
+        const sides = entity.sides;
+        const pts: THREE.Vector3[] = [];
+        for (let i = 0; i <= sides; i++) {
+          const angle = (i / sides) * Math.PI * 2;
+          pts.push(to3D(sketch.plane, center.x + Math.cos(angle) * r, center.y + Math.sin(angle) * r));
+        }
+        segments.push(pts);
+        isConstruction.push(isCon);
+      } else if (entity.type === "ellipse") {
+        const center = pointMap.get(entity.centerId);
+        if (!center) continue;
+        const pts: THREE.Vector3[] = [];
+        const segs = 64;
+        for (let i = 0; i <= segs; i++) {
+          const angle = (i / segs) * Math.PI * 2;
+          pts.push(to3D(sketch.plane, center.x + Math.cos(angle) * entity.radiusX, center.y + Math.sin(angle) * entity.radiusY));
+        }
+        segments.push(pts);
+        isConstruction.push(isCon);
+      } else if (entity.type === "slot") {
+        const start = pointMap.get(entity.startId);
+        const end = pointMap.get(entity.endId);
+        if (!start || !end) continue;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 0.01) continue;
+        const hw = entity.width / 2;
+        const nx = -dy / len * hw;
+        const ny = dx / len * hw;
+        // Build slot outline: top edge, end semicircle, bottom edge, start semicircle
+        const pts: THREE.Vector3[] = [];
+        pts.push(to3D(sketch.plane, start.x + nx, start.y + ny));
+        pts.push(to3D(sketch.plane, end.x + nx, end.y + ny));
+        // End semicircle
+        const endAngleStart = Math.atan2(ny, nx);
+        for (let i = 0; i <= 16; i++) {
+          const a = endAngleStart - Math.PI * (i / 16);
+          pts.push(to3D(sketch.plane, end.x + Math.cos(a) * hw, end.y + Math.sin(a) * hw));
+        }
+        pts.push(to3D(sketch.plane, end.x - nx, end.y - ny));
+        pts.push(to3D(sketch.plane, start.x - nx, start.y - ny));
+        // Start semicircle
+        const startAngleStart = Math.atan2(-ny, -nx);
+        for (let i = 0; i <= 16; i++) {
+          const a = startAngleStart - Math.PI * (i / 16);
+          pts.push(to3D(sketch.plane, start.x + Math.cos(a) * hw, start.y + Math.sin(a) * hw));
+        }
+        segments.push(pts);
+        isConstruction.push(isCon);
       } else if (entity.type === "line") {
         const start = pointMap.get(entity.startId);
         const end = pointMap.get(entity.endId);
@@ -290,6 +344,53 @@ export function SketchOverlay({
         }
       }
       return curvePts;
+    }
+    if (activeTool === "polygon") {
+      const [center, edge] = previewPoints;
+      const dx = edge.x - center.x;
+      const dy = edge.y - center.y;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const sides = 6;
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= sides; i++) {
+        const angle = (i / sides) * Math.PI * 2;
+        pts.push(to3D(sketch.plane, center.x + Math.cos(angle) * r, center.y + Math.sin(angle) * r));
+      }
+      return pts;
+    }
+    if (activeTool === "ellipse") {
+      const [center, edge] = previewPoints;
+      const rx = Math.abs(edge.x - center.x);
+      const ry = Math.abs(edge.y - center.y);
+      const pts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 64; i++) {
+        const angle = (i / 64) * Math.PI * 2;
+        pts.push(to3D(sketch.plane, center.x + Math.cos(angle) * rx, center.y + Math.sin(angle) * ry));
+      }
+      return pts;
+    }
+    if (activeTool === "slot") {
+      const [start, end] = previewPoints;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.01) return previewPoints.map(p => to3D(sketch.plane, p.x, p.y));
+      const hw = Math.max(len * 0.15, 1);
+      const nx = -dy / len * hw;
+      const ny = dx / len * hw;
+      const pts: THREE.Vector3[] = [];
+      pts.push(to3D(sketch.plane, start.x + nx, start.y + ny));
+      pts.push(to3D(sketch.plane, end.x + nx, end.y + ny));
+      for (let i = 0; i <= 16; i++) {
+        const a = Math.atan2(ny, nx) - Math.PI * (i / 16);
+        pts.push(to3D(sketch.plane, end.x + Math.cos(a) * hw, end.y + Math.sin(a) * hw));
+      }
+      pts.push(to3D(sketch.plane, start.x - nx, start.y - ny));
+      for (let i = 0; i <= 16; i++) {
+        const a = Math.atan2(-ny, -nx) - Math.PI * (i / 16);
+        pts.push(to3D(sketch.plane, start.x + Math.cos(a) * hw, start.y + Math.sin(a) * hw));
+      }
+      return pts;
     }
     return null;
   }, [previewPoints, activeTool, sketch.plane]);

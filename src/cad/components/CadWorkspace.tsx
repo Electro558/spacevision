@@ -109,6 +109,9 @@ export function CadWorkspace() {
           m: "mirror",
           o: "offset",
           s: "select",
+          p: "polygon",
+          e: "ellipse",
+          n: "slot",
         };
         const key = e.key.toLowerCase();
         if (toolMap[key]) {
@@ -177,8 +180,8 @@ export function CadWorkspace() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Feature tree — left */}
-        <div className="w-56 overflow-y-auto border-r border-gray-800 bg-[#12122a] p-2 text-xs">
-          <div className="mb-2 font-bold text-indigo-400">Feature Tree</div>
+        <div className="cad-panel w-56 overflow-y-auto border-r border-gray-800/50 bg-[#0f0f24]/95 p-2 text-xs backdrop-blur-sm">
+          <div className="cad-panel-header text-indigo-300">Feature Tree</div>
           {cad.project.features.length === 0 ? (
             <p className="text-gray-600">No features yet.</p>
           ) : (
@@ -187,12 +190,12 @@ export function CadWorkspace() {
               return (
               <div
                 key={feature.id}
-                className={`mb-0.5 flex items-center rounded ${
+                className={`cad-tree-item mb-0.5 flex items-center rounded ${
                   isRolledBack ? "opacity-30" :
                   cad.uiState.selectedFeatureId === feature.id
-                    ? "bg-indigo-900/50 text-white"
+                    ? "selected text-white"
                     : feature.suppressed ? "text-gray-600"
-                    : "text-gray-300 hover:bg-gray-800"
+                    : "text-gray-300"
                 }`}
               >
                 <button
@@ -226,7 +229,7 @@ export function CadWorkspace() {
                     feature.suppressed ? "line-through" : ""
                   }`}
                 >
-                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : feature.type === "loft" ? "⋈" : feature.type === "sweep" ? "↝" : feature.type === "shell" ? "☐" : feature.type === "linearPattern" ? "⫼" : feature.type === "circularPattern" ? "◎" : feature.type === "mirrorBody" ? "⟺" : feature.type === "hole" ? "⊙" : feature.type === "boolean" ? "⊕" : "●"} {feature.name}
+                  {feature.type === "sketch" ? "✏" : feature.type === "extrude" ? "⬆" : feature.type === "revolve" ? "↻" : feature.type === "fillet" ? "◠" : feature.type === "chamfer" ? "◇" : feature.type === "loft" ? "⋈" : feature.type === "sweep" ? "↝" : feature.type === "shell" ? "☐" : feature.type === "linearPattern" ? "⫼" : feature.type === "circularPattern" ? "◎" : feature.type === "mirrorBody" ? "⟺" : feature.type === "hole" ? "⊙" : feature.type === "boolean" ? "⊕" : feature.type === "primitive" ? "⊞" : feature.type === "thread" ? "⏚" : feature.type === "rib" ? "▤" : feature.type === "dome" ? "⌓" : "●"} {feature.name}
                 </span>
               </div>
               );
@@ -234,13 +237,13 @@ export function CadWorkspace() {
           )}
           {/* Rollback bar */}
           {cad.project.features.length > 0 && (
-            <div className="mt-2 mb-2">
-              <div className="flex items-center justify-between text-gray-500 mb-1">
-                <span>Rollback</span>
+            <div className="mt-3 mb-2 rounded-lg bg-gradient-to-b from-indigo-950/30 to-transparent p-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="cad-label">Rollback</span>
                 {cad.uiState.rollbackIndex >= 0 && (
                   <button
                     onClick={() => cad.setRollbackIndex(-1)}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                    className="cad-toolbar-btn rounded px-2 py-0.5 text-[10px] text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/30"
                   >
                     Reset
                   </button>
@@ -255,16 +258,16 @@ export function CadWorkspace() {
                   const val = parseInt(e.target.value);
                   cad.setRollbackIndex(val === cad.project.features.length - 1 ? -1 : val);
                 }}
-                className="w-full accent-indigo-500"
+                className="cad-slider w-full"
               />
-              <div className="mt-0.5 text-[10px] text-gray-600">
+              <div className="mt-1 text-[10px] text-indigo-400/60">
                 {cad.uiState.rollbackIndex >= 0
                   ? `Showing ${cad.uiState.rollbackIndex + 1} of ${cad.project.features.length} features`
                   : `All ${cad.project.features.length} features`}
               </div>
             </div>
           )}
-          <div className="mb-2 mt-4 font-bold text-indigo-400">Parameters</div>
+          <div className="cad-panel-header mt-4 text-indigo-300">Parameters</div>
           {Object.entries(cad.project.parameters).map(([name, param]) => (
             <div key={name} className="flex justify-between px-2 py-0.5 text-gray-400">
               <span>{name}</span>
@@ -279,8 +282,8 @@ export function CadWorkspace() {
         </div>
 
         {/* Properties — right */}
-        <div className="w-52 overflow-y-auto border-l border-gray-800 bg-[#12122a] p-2 text-xs">
-          <div className="mb-2 font-bold text-indigo-400">Properties</div>
+        <div className="cad-panel w-52 overflow-y-auto border-l border-gray-800/50 bg-[#0f0f24]/95 p-2 text-xs backdrop-blur-sm">
+          <div className="cad-panel-header text-indigo-300">Properties</div>
           {cad.uiState.selectedFeatureId ? (
             (() => {
               const feature = cad.project.features.find((f) => f.id === cad.uiState.selectedFeatureId);
@@ -289,35 +292,35 @@ export function CadWorkspace() {
                 <div>
                   <div className="mb-2 flex items-center justify-between">
                     <p className="text-gray-400">{feature.type}: {feature.name}</p>
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] ${feature.suppressed ? 'bg-gray-700 text-gray-500' : 'bg-indigo-900/50 text-indigo-300'}`}>
+                    <span className={`cad-badge ${feature.suppressed ? 'suppressed' : 'active'}`}>
                       {feature.suppressed ? 'Suppressed' : 'Active'}
                     </span>
                   </div>
                   {/* Editable name */}
-                  <div className="mb-2">
-                    <label className="text-gray-500">Name</label>
+                  <div className="mb-3">
+                    <label className="cad-label">Name</label>
                     <input
-                      className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="cad-input mt-1 w-full"
                       value={feature.name}
                       onChange={(e) => cad.updateFeature(feature.id, { name: e.target.value })}
                     />
                   </div>
                   {/* Per-feature color override */}
                   {feature.type !== "sketch" && (
-                    <div className="mb-2">
-                      <label className="text-gray-500">Color Override</label>
-                      <div className="mt-0.5 flex items-center gap-2">
+                    <div className="mb-3">
+                      <label className="cad-label">Color Override</label>
+                      <div className="mt-1 flex items-center gap-2">
                         <input
                           type="color"
-                          className="h-6 w-8 cursor-pointer rounded border border-gray-700 bg-transparent"
+                          className="cad-color-picker h-7 w-9 bg-transparent"
                           value={(feature as any).colorOverride || cad.project.metadata.material?.color || "#6366f1"}
                           onChange={(e) => cad.updateFeature(feature.id, { colorOverride: e.target.value } as any)}
                         />
-                        <span className="text-gray-400 text-[10px]">{(feature as any).colorOverride || "Default"}</span>
+                        <span className="text-indigo-300/60 text-[10px]">{(feature as any).colorOverride || "Default"}</span>
                         {(feature as any).colorOverride && (
                           <button
                             onClick={() => cad.updateFeature(feature.id, { colorOverride: undefined } as any)}
-                            className="text-[10px] text-red-400 hover:text-red-300"
+                            className="cad-toolbar-btn rounded px-1.5 py-0.5 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-900/20"
                           >
                             Clear
                           </button>
@@ -341,7 +344,7 @@ export function CadWorkspace() {
                           cad.setSelectedFeatureId(feature.id);
                           cad.setSketchModeActive(true, feature.id);
                         }}
-                        className="mt-2 w-full rounded bg-indigo-700 px-2 py-1 text-indigo-100 hover:bg-indigo-600"
+                        className="cad-toolbar-btn mt-3 w-full rounded-lg border border-indigo-600/40 bg-gradient-to-r from-indigo-800/60 to-indigo-700/40 px-2 py-1.5 text-indigo-100 hover:from-indigo-700/60 hover:to-indigo-600/50"
                       >
                         Edit Sketch
                       </button>
@@ -350,18 +353,18 @@ export function CadWorkspace() {
                   {feature.type === "extrude" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Depth</label>
+                        <label className="cad-label">Depth</label>
                         <input
                           type="number"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.depth === 'number' ? feature.depth : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { depth: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Direction</label>
+                        <label className="cad-label">Direction</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.direction}
                           onChange={(e) => cad.updateFeature(feature.id, { direction: e.target.value as any })}
                         >
@@ -371,9 +374,9 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Operation</label>
+                        <label className="cad-label">Operation</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.operation}
                           onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
                         >
@@ -382,11 +385,11 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Draft Angle (deg)</label>
+                        <label className="cad-label">Draft Angle (deg)</label>
                         <input
                           type="number"
                           step="0.5"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={feature.draftAngle ?? 0}
                           onChange={(e) => cad.updateFeature(feature.id, { draftAngle: parseFloat(e.target.value) || 0 })}
                         />
@@ -396,18 +399,18 @@ export function CadWorkspace() {
                   {feature.type === "revolve" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Angle (degrees)</label>
+                        <label className="cad-label">Angle (degrees)</label>
                         <input
                           type="number"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.angle === 'number' ? feature.angle : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { angle: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Axis</label>
+                        <label className="cad-label">Axis</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.axis}
                           onChange={(e) => cad.updateFeature(feature.id, { axis: e.target.value as any })}
                         >
@@ -419,9 +422,9 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Direction</label>
+                        <label className="cad-label">Direction</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.direction}
                           onChange={(e) => cad.updateFeature(feature.id, { direction: e.target.value as any })}
                         >
@@ -431,9 +434,9 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Operation</label>
+                        <label className="cad-label">Operation</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.operation}
                           onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
                         >
@@ -446,11 +449,11 @@ export function CadWorkspace() {
                   {feature.type === "fillet" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Radius</label>
+                        <label className="cad-label">Radius</label>
                         <input
                           type="number"
                           step="0.1"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.radius === 'number' ? feature.radius : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { radius: parseFloat(e.target.value) || 0 })}
                         />
@@ -463,11 +466,11 @@ export function CadWorkspace() {
                   {feature.type === "chamfer" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Distance</label>
+                        <label className="cad-label">Distance</label>
                         <input
                           type="number"
                           step="0.1"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.distance === 'number' ? feature.distance : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { distance: parseFloat(e.target.value) || 0 })}
                         />
@@ -483,9 +486,9 @@ export function CadWorkspace() {
                         <span>Profiles</span><span className="text-green-400">{feature.sketchIds.length} sketches</span>
                       </div>
                       <div>
-                        <label className="text-gray-500">Solid</label>
+                        <label className="cad-label">Solid</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.solid ? "true" : "false"}
                           onChange={(e) => cad.updateFeature(feature.id, { solid: e.target.value === "true" })}
                         >
@@ -494,9 +497,9 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Operation</label>
+                        <label className="cad-label">Operation</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.operation}
                           onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
                         >
@@ -515,9 +518,9 @@ export function CadWorkspace() {
                         <span>Path</span><span className="text-green-400">Sketch</span>
                       </div>
                       <div>
-                        <label className="text-gray-500">Operation</label>
+                        <label className="cad-label">Operation</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.operation}
                           onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
                         >
@@ -530,11 +533,11 @@ export function CadWorkspace() {
                   {feature.type === "shell" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Wall Thickness</label>
+                        <label className="cad-label">Wall Thickness</label>
                         <input
                           type="number"
                           step="0.1"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.thickness === 'number' ? feature.thickness : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { thickness: parseFloat(e.target.value) || 0 })}
                         />
@@ -544,29 +547,29 @@ export function CadWorkspace() {
                   {feature.type === "linearPattern" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Count</label>
+                        <label className="cad-label">Count</label>
                         <input
                           type="number"
                           min="2"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={feature.count}
                           onChange={(e) => cad.updateFeature(feature.id, { count: parseInt(e.target.value) || 2 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Spacing</label>
+                        <label className="cad-label">Spacing</label>
                         <input
                           type="number"
                           step="0.5"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.spacing === 'number' ? feature.spacing : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { spacing: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Direction</label>
+                        <label className="cad-label">Direction</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.direction}
                           onChange={(e) => cad.updateFeature(feature.id, { direction: e.target.value as any })}
                         >
@@ -580,28 +583,28 @@ export function CadWorkspace() {
                   {feature.type === "circularPattern" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Count</label>
+                        <label className="cad-label">Count</label>
                         <input
                           type="number"
                           min="2"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={feature.count}
                           onChange={(e) => cad.updateFeature(feature.id, { count: parseInt(e.target.value) || 2 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Angle (total)</label>
+                        <label className="cad-label">Angle (total)</label>
                         <input
                           type="number"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.angle === 'number' ? feature.angle : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { angle: parseFloat(e.target.value) || 360 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Axis</label>
+                        <label className="cad-label">Axis</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.axis}
                           onChange={(e) => cad.updateFeature(feature.id, { axis: e.target.value as any })}
                         >
@@ -615,9 +618,9 @@ export function CadWorkspace() {
                   {feature.type === "mirrorBody" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Mirror Plane</label>
+                        <label className="cad-label">Mirror Plane</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.plane}
                           onChange={(e) => cad.updateFeature(feature.id, { plane: e.target.value as any })}
                         >
@@ -631,9 +634,9 @@ export function CadWorkspace() {
                   {feature.type === "hole" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Hole Type</label>
+                        <label className="cad-label">Hole Type</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.holeType}
                           onChange={(e) => cad.updateFeature(feature.id, { holeType: e.target.value as any })}
                         >
@@ -643,49 +646,49 @@ export function CadWorkspace() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-gray-500">Diameter</label>
+                        <label className="cad-label">Diameter</label>
                         <input
                           type="number"
                           step="0.5"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.diameter === 'number' ? feature.diameter : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { diameter: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Depth</label>
+                        <label className="cad-label">Depth</label>
                         <input
                           type="number"
                           step="0.5"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={typeof feature.depth === 'number' ? feature.depth : ''}
                           onChange={(e) => cad.updateFeature(feature.id, { depth: parseFloat(e.target.value) || 0 })}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Position X</label>
+                        <label className="cad-label">Position X</label>
                         <input
                           type="number"
                           step="1"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={feature.position.x}
                           onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, x: parseFloat(e.target.value) || 0 } } as any)}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Position Y</label>
+                        <label className="cad-label">Position Y</label>
                         <input
                           type="number"
                           step="1"
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                          className="cad-input mt-1 w-full"
                           value={feature.position.y}
                           onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, y: parseFloat(e.target.value) || 0 } } as any)}
                         />
                       </div>
                       <div>
-                        <label className="text-gray-500">Plane</label>
+                        <label className="cad-label">Plane</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.plane}
                           onChange={(e) => cad.updateFeature(feature.id, { plane: e.target.value as any })}
                         >
@@ -697,21 +700,21 @@ export function CadWorkspace() {
                       {feature.holeType === "counterbore" && (
                         <>
                           <div>
-                            <label className="text-gray-500">CB Diameter</label>
+                            <label className="cad-label">CB Diameter</label>
                             <input
                               type="number"
                               step="0.5"
-                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="cad-input mt-1 w-full"
                               value={feature.counterboreDiameter ?? 10}
                               onChange={(e) => cad.updateFeature(feature.id, { counterboreDiameter: parseFloat(e.target.value) || 0 } as any)}
                             />
                           </div>
                           <div>
-                            <label className="text-gray-500">CB Depth</label>
+                            <label className="cad-label">CB Depth</label>
                             <input
                               type="number"
                               step="0.5"
-                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="cad-input mt-1 w-full"
                               value={feature.counterboreDepth ?? 3}
                               onChange={(e) => cad.updateFeature(feature.id, { counterboreDepth: parseFloat(e.target.value) || 0 } as any)}
                             />
@@ -721,21 +724,21 @@ export function CadWorkspace() {
                       {feature.holeType === "countersink" && (
                         <>
                           <div>
-                            <label className="text-gray-500">CS Diameter</label>
+                            <label className="cad-label">CS Diameter</label>
                             <input
                               type="number"
                               step="0.5"
-                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="cad-input mt-1 w-full"
                               value={feature.countersinkDiameter ?? 10}
                               onChange={(e) => cad.updateFeature(feature.id, { countersinkDiameter: parseFloat(e.target.value) || 0 } as any)}
                             />
                           </div>
                           <div>
-                            <label className="text-gray-500">CS Angle (deg)</label>
+                            <label className="cad-label">CS Angle (deg)</label>
                             <input
                               type="number"
                               step="1"
-                              className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none focus:ring-1 focus:ring-indigo-500"
+                              className="cad-input mt-1 w-full"
                               value={feature.countersinkAngle ?? 82}
                               onChange={(e) => cad.updateFeature(feature.id, { countersinkAngle: parseFloat(e.target.value) || 82 } as any)}
                             />
@@ -747,9 +750,9 @@ export function CadWorkspace() {
                   {feature.type === "boolean" && (
                     <div className="space-y-1.5">
                       <div>
-                        <label className="text-gray-500">Operation</label>
+                        <label className="cad-label">Operation</label>
                         <select
-                          className="mt-0.5 w-full rounded bg-gray-800 px-2 py-1 text-white outline-none"
+                          className="cad-select mt-1 w-full"
                           value={feature.operation}
                           onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
                         >
@@ -766,13 +769,155 @@ export function CadWorkspace() {
                       </div>
                     </div>
                   )}
+                  {feature.type === "primitive" && (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-gray-400">
+                        <span>Shape</span><span className="text-green-400">{feature.primitiveType}</span>
+                      </div>
+                      <div>
+                        <label className="cad-label">Operation</label>
+                        <select
+                          className="cad-select mt-1 w-full"
+                          value={feature.operation}
+                          onChange={(e) => cad.updateFeature(feature.id, { operation: e.target.value as any })}
+                        >
+                          <option value="add">Add (Union)</option>
+                          <option value="cut">Cut (Subtract)</option>
+                        </select>
+                      </div>
+                      {(feature.primitiveType === "box" || feature.primitiveType === "wedge") && (
+                        <>
+                          <div>
+                            <label className="cad-label">Width</label>
+                            <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.width ?? 20} onChange={(e) => cad.updateFeature(feature.id, { width: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          <div>
+                            <label className="cad-label">Height</label>
+                            <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.height ?? 20} onChange={(e) => cad.updateFeature(feature.id, { height: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          <div>
+                            <label className="cad-label">Length</label>
+                            <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.length ?? 20} onChange={(e) => cad.updateFeature(feature.id, { length: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          {feature.primitiveType === "wedge" && (
+                            <div>
+                              <label className="cad-label">Top Length (ltx)</label>
+                              <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.ltx ?? 10} onChange={(e) => cad.updateFeature(feature.id, { ltx: parseFloat(e.target.value) || 0 } as any)} />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {(feature.primitiveType === "cylinder" || feature.primitiveType === "cone" || feature.primitiveType === "pipe") && (
+                        <>
+                          <div>
+                            <label className="cad-label">Radius</label>
+                            <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.radius ?? 10} onChange={(e) => cad.updateFeature(feature.id, { radius: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          <div>
+                            <label className="cad-label">Depth</label>
+                            <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.depth ?? 20} onChange={(e) => cad.updateFeature(feature.id, { depth: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          {(feature.primitiveType === "cone" || feature.primitiveType === "pipe") && (
+                            <div>
+                              <label className="cad-label">{feature.primitiveType === "cone" ? "Top Radius" : "Inner Radius"}</label>
+                              <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.radius2 ?? 0} onChange={(e) => cad.updateFeature(feature.id, { radius2: parseFloat(e.target.value) || 0 } as any)} />
+                            </div>
+                          )}
+                        </>
+                      )}
+                      {feature.primitiveType === "sphere" && (
+                        <div>
+                          <label className="cad-label">Radius</label>
+                          <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.radius ?? 10} onChange={(e) => cad.updateFeature(feature.id, { radius: parseFloat(e.target.value) || 0 } as any)} />
+                        </div>
+                      )}
+                      {feature.primitiveType === "torus" && (
+                        <>
+                          <div>
+                            <label className="cad-label">Major Radius</label>
+                            <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.radius ?? 15} onChange={(e) => cad.updateFeature(feature.id, { radius: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                          <div>
+                            <label className="cad-label">Minor Radius</label>
+                            <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.radius2 ?? 5} onChange={(e) => cad.updateFeature(feature.id, { radius2: parseFloat(e.target.value) || 0 } as any)} />
+                          </div>
+                        </>
+                      )}
+                      <div>
+                        <label className="cad-label">Position X</label>
+                        <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.position.x} onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, x: parseFloat(e.target.value) || 0 } } as any)} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Position Y</label>
+                        <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.position.y} onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, y: parseFloat(e.target.value) || 0 } } as any)} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Position Z</label>
+                        <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.position.z} onChange={(e) => cad.updateFeature(feature.id, { position: { ...feature.position, z: parseFloat(e.target.value) || 0 } } as any)} />
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "thread" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="cad-label">Diameter</label>
+                        <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.diameter} onChange={(e) => cad.updateFeature(feature.id, { diameter: parseFloat(e.target.value) || 0 } as any)} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Pitch</label>
+                        <input type="number" step="0.25" className="cad-input mt-1 w-full" value={feature.pitch} onChange={(e) => cad.updateFeature(feature.id, { pitch: parseFloat(e.target.value) || 0 } as any)} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Length</label>
+                        <input type="number" step="1" className="cad-input mt-1 w-full" value={feature.length} onChange={(e) => cad.updateFeature(feature.id, { length: parseFloat(e.target.value) || 0 } as any)} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Axis</label>
+                        <select className="cad-select mt-1 w-full" value={feature.axis} onChange={(e) => cad.updateFeature(feature.id, { axis: e.target.value as any })}>
+                          <option value="x">X</option>
+                          <option value="y">Y</option>
+                          <option value="z">Z</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="cad-label">Type</label>
+                        <select className="cad-select mt-1 w-full" value={feature.internal ? "internal" : "external"} onChange={(e) => cad.updateFeature(feature.id, { internal: e.target.value === "internal" } as any)}>
+                          <option value="external">External</option>
+                          <option value="internal">Internal</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "rib" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="cad-label">Thickness</label>
+                        <input type="number" step="0.5" className="cad-input mt-1 w-full" value={typeof feature.thickness === 'number' ? feature.thickness : ''} onChange={(e) => cad.updateFeature(feature.id, { thickness: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                      <div>
+                        <label className="cad-label">Direction</label>
+                        <select className="cad-select mt-1 w-full" value={feature.direction} onChange={(e) => cad.updateFeature(feature.id, { direction: e.target.value as any })}>
+                          <option value="normal">Normal</option>
+                          <option value="reverse">Reverse</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {feature.type === "dome" && (
+                    <div className="space-y-1.5">
+                      <div>
+                        <label className="cad-label">Height</label>
+                        <input type="number" step="0.5" className="cad-input mt-1 w-full" value={feature.height} onChange={(e) => cad.updateFeature(feature.id, { height: parseFloat(e.target.value) || 0 })} />
+                      </div>
+                    </div>
+                  )}
                   {/* Delete button */}
                   <button
                     onClick={() => {
                       cad.removeFeature(feature.id);
                       cad.setSelectedFeatureId(null);
                     }}
-                    className="mt-3 w-full rounded bg-red-900/60 px-2 py-1 text-red-300 hover:bg-red-800"
+                    className="cad-delete-btn mt-4 w-full rounded-lg border border-red-800/50 bg-gradient-to-r from-red-950/60 to-red-900/40 px-2 py-1.5 text-red-300 hover:from-red-900/60 hover:to-red-800/50 hover:text-red-200"
                   >
                     Delete Feature
                   </button>

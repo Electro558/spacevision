@@ -21,13 +21,10 @@ import {
   Maximize2,
   MessageSquare,
   Wrench,
-  Lightbulb,
   Trash2,
   Copy,
   Lock,
   Unlock,
-  EyeIcon,
-  EyeOffIcon,
   Grid3x3,
   Magnet,
   ChevronRight,
@@ -221,13 +218,6 @@ export default function GeneratePage() {
   }, [history, historyIndex]);
 
   // ─── Object Operations ───
-  const updateObjects = useCallback((newObjects: SceneObject[], newSelectedId?: string | null) => {
-    setObjects(newObjects);
-    const sel = newSelectedId !== undefined ? newSelectedId : selectedId;
-    if (newSelectedId !== undefined) setSelectedIds(sel ? [sel] : []);
-    pushHistory(newObjects, sel);
-  }, [selectedId, pushHistory]);
-
   const addPrimitive = useCallback((type: SceneObject["type"]) => {
     const count = objects.filter(o => o.visible && !o.groupId).length;
     const x = (count % 5) * 1.5;
@@ -383,7 +373,7 @@ export default function GeneratePage() {
     pushHistory(newObjects, selectedId);
   }, [objects, selectedIds, selectedId, pushHistory]);
 
-  const mirrorSelected = useCallback((axis: 'x' | 'y' | 'z') => {
+  const _mirrorSelected = useCallback((axis: 'x' | 'y' | 'z') => {
     if (selectedIds.length === 0) return;
     const idx = axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
     const sel = objects.filter(o => selectedIds.includes(o.id));
@@ -1012,15 +1002,6 @@ export default function GeneratePage() {
   }, [deleteSelected, duplicateSelected, undo, redo, objects, handleGroup, handleUngroup, handleToggleHole, selectedGroupId, copySelected, pasteFromClipboard, cutSelected, flattenSelected, flipSelected]);
 
   // ─── Primitives ───
-  const primitiveTypes: { type: SceneObject["type"]; icon: any; label: string }[] = [
-    { type: "box", icon: Box, label: "Cube" },
-    { type: "sphere", icon: Circle, label: "Sphere" },
-    { type: "cylinder", icon: Cylinder, label: "Cylinder" },
-    { type: "cone", icon: Triangle, label: "Cone" },
-    { type: "wedge", icon: Triangle, label: "Wedge" },
-    { type: "tube", icon: Hexagon, label: "Tube" },
-    { type: "star", icon: Star, label: "Star" },
-  ];
 
   return (
     <div className="h-screen pt-14 bg-surface-dark flex overflow-hidden select-none">
@@ -1515,7 +1496,7 @@ export default function GeneratePage() {
 
             {rightPanel === "search" ? (
               /* ─── Search Panel ─── */
-              <SketchfabSearch onImportUrl={(url, name) => {
+              <SketchfabSearch onImportUrl={(_url, _name) => {
                 // Users download from Sketchfab and then drag-drop into the app
               }} />
             ) : rightPanel === "properties" ? (

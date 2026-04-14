@@ -1,6 +1,6 @@
 // src/cad/engine/featureTree.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, BooleanFeature, HoleFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, BooleanFeature, HoleFeature, PrimitiveFeature, PrimitiveType, ThreadFeature, RibFeature, DomeFeature, Sketch, SketchPlane, SketchPoint, SketchEntity } from "./types";
 
 let counter = 0;
 
@@ -313,6 +313,73 @@ export function createHole(
     depth,
     position: { x: 0, y: 0 },
     plane,
+  };
+}
+
+export function createPrimitive(
+  primitiveType: PrimitiveType,
+  operation: "add" | "cut" = "add"
+): PrimitiveFeature {
+  const defaults: Record<PrimitiveType, Partial<PrimitiveFeature>> = {
+    box: { width: 20, height: 20, length: 20 },
+    cylinder: { radius: 10, depth: 20 },
+    sphere: { radius: 10 },
+    cone: { radius: 10, radius2: 0, depth: 20 },
+    torus: { radius: 15, radius2: 5 },
+    wedge: { width: 20, height: 20, length: 20, ltx: 10 },
+    pipe: { radius: 10, radius2: 8, depth: 20 },
+  };
+  return {
+    id: newFeatureId(),
+    type: "primitive",
+    name: `${primitiveType.charAt(0).toUpperCase() + primitiveType.slice(1)} ${Date.now() % 1000}`,
+    suppressed: false,
+    primitiveType,
+    position: { x: 0, y: 0, z: 0 },
+    operation,
+    ...defaults[primitiveType],
+  } as PrimitiveFeature;
+}
+
+export function createThread(
+  diameter: number = 10,
+  pitch: number = 1.5,
+  length: number = 15,
+  internal: boolean = false
+): ThreadFeature {
+  return {
+    id: newFeatureId(),
+    type: "thread",
+    name: `Thread ${Date.now() % 1000}`,
+    suppressed: false,
+    position: { x: 0, y: 0, z: 0 },
+    axis: "z",
+    diameter,
+    pitch,
+    length,
+    internal,
+  };
+}
+
+export function createRib(sketchId: string, thickness: number = 2): RibFeature {
+  return {
+    id: newFeatureId(),
+    type: "rib",
+    name: `Rib ${Date.now() % 1000}`,
+    suppressed: false,
+    sketchId,
+    thickness,
+    direction: "normal",
+  };
+}
+
+export function createDome(height: number = 5): DomeFeature {
+  return {
+    id: newFeatureId(),
+    type: "dome",
+    name: `Dome ${Date.now() % 1000}`,
+    suppressed: false,
+    height,
   };
 }
 

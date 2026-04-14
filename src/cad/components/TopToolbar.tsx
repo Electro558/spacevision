@@ -15,10 +15,14 @@ import {
   createCircularPattern,
   createMirrorBody,
   createHole,
+  createPrimitive,
+  createThread,
+  createRib,
+  createDome,
 } from "../engine/featureTree";
 import { createParameter } from "../engine/parameterRegistry";
 import { downloadProject, loadProjectFromFile } from "../engine/projectSerializer";
-import type { SketchPlane, SketchFeature } from "../engine/types";
+import type { SketchPlane, SketchFeature, PrimitiveType } from "../engine/types";
 
 type MenuId = "file" | "sketch" | "features" | "view" | null;
 
@@ -202,6 +206,53 @@ export function TopToolbar() {
     setOpenMenu(null);
   };
 
+  const handlePrimitive = (primitiveType: PrimitiveType) => {
+    const prim = createPrimitive(primitiveType);
+    cad.addFeature(prim);
+    cad.setSelectedFeatureId(prim.id);
+    setOpenMenu(null);
+  };
+
+  const handleThread = () => {
+    const hasSolid = cad.project.features.some(
+      f => (f.type === "extrude" || f.type === "revolve" || f.type === "primitive") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Thread requires an existing solid.");
+      return;
+    }
+    const thread = createThread();
+    cad.addFeature(thread);
+    cad.setSelectedFeatureId(thread.id);
+    setOpenMenu(null);
+  };
+
+  const handleRib = () => {
+    const sketches = cad.project.features.filter(f => f.type === "sketch" && !f.suppressed);
+    if (sketches.length === 0) {
+      alert("Rib requires a sketch profile. Create a sketch first.");
+      return;
+    }
+    const rib = createRib(sketches[sketches.length - 1].id);
+    cad.addFeature(rib);
+    cad.setSelectedFeatureId(rib.id);
+    setOpenMenu(null);
+  };
+
+  const handleDome = () => {
+    const hasSolid = cad.project.features.some(
+      f => (f.type === "extrude" || f.type === "revolve" || f.type === "primitive") && !f.suppressed
+    );
+    if (!hasSolid) {
+      alert("Dome requires an existing solid.");
+      return;
+    }
+    const dome = createDome();
+    cad.addFeature(dome);
+    cad.setSelectedFeatureId(dome.id);
+    setOpenMenu(null);
+  };
+
   const handleImportStep = async () => {
     const input = document.createElement("input");
     input.type = "file";
@@ -281,6 +332,17 @@ export function TopToolbar() {
         { label: "Mirror Body", action: handleMirrorBody },
         { label: "─────────", action: () => {} },
         { label: "Hole Wizard", action: handleHole },
+        { label: "Thread", action: handleThread },
+        { label: "Rib", action: handleRib },
+        { label: "Dome", action: handleDome },
+        { label: "─────────", action: () => {} },
+        { label: "⊞ Box", action: () => handlePrimitive("box") },
+        { label: "⊞ Cylinder", action: () => handlePrimitive("cylinder") },
+        { label: "⊞ Sphere", action: () => handlePrimitive("sphere") },
+        { label: "⊞ Cone", action: () => handlePrimitive("cone") },
+        { label: "⊞ Torus", action: () => handlePrimitive("torus") },
+        { label: "⊞ Wedge", action: () => handlePrimitive("wedge") },
+        { label: "⊞ Pipe", action: () => handlePrimitive("pipe") },
       ],
     },
     {
@@ -296,33 +358,33 @@ export function TopToolbar() {
   ];
 
   return (
-    <div ref={menuRef} className="flex h-10 items-center border-b border-gray-800 bg-[#1a1a2e] px-4 text-xs">
-      <span className="mr-4 font-bold text-indigo-400">SpaceVision CAD</span>
+    <div ref={menuRef} className="flex h-10 items-center border-b border-gray-800/50 bg-gradient-to-r from-[#0f0f24] via-[#151530] to-[#0f0f24] px-4 text-xs backdrop-blur-sm">
+      <span className="mr-4 font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">SpaceVision CAD</span>
 
       {menus.map((menu) => (
         <div key={menu.id} className="relative">
           <button
             onClick={() => setOpenMenu(openMenu === menu.id ? null : menu.id)}
-            className={`px-3 py-2 ${
+            className={`cad-toolbar-btn rounded px-3 py-1.5 transition-all duration-200 ${
               openMenu === menu.id
-                ? "bg-gray-700 text-white"
-                : "text-gray-400 hover:text-white"
+                ? "bg-indigo-800/40 text-white border border-indigo-600/30"
+                : "text-gray-400 hover:text-white hover:bg-indigo-900/20"
             }`}
           >
             {menu.label}
           </button>
 
           {openMenu === menu.id && (
-            <div className="absolute left-0 top-full z-50 min-w-48 rounded-b border border-gray-700 bg-[#1a1a2e] py-1 shadow-xl">
+            <div className="cad-menu-dropdown absolute left-0 top-full z-50 min-w-48 rounded-b-lg border border-indigo-800/30 bg-[#12122a]/95 py-1 shadow-2xl shadow-indigo-900/20 backdrop-blur-md">
               {menu.items.map((item, i) => (
                 <button
                   key={i}
                   onClick={item.action}
-                  className="flex w-full items-center justify-between px-4 py-1.5 text-left text-gray-300 hover:bg-gray-700"
+                  className="flex w-full items-center justify-between px-4 py-1.5 text-left text-gray-300 transition-colors duration-150 hover:bg-indigo-800/20 hover:text-indigo-200"
                 >
                   <span>{item.label}</span>
                   {item.shortcut && (
-                    <span className="ml-4 text-gray-500">{item.shortcut}</span>
+                    <span className="ml-4 text-indigo-500/60 text-[10px]">{item.shortcut}</span>
                   )}
                 </button>
               ))}
@@ -337,7 +399,7 @@ export function TopToolbar() {
       <button
         onClick={cad.undo}
         disabled={!cad.canUndo}
-        className="mr-1 rounded px-2 py-1 text-gray-400 hover:bg-gray-700 disabled:opacity-30"
+        className="cad-toolbar-btn mr-1 rounded-lg px-2.5 py-1.5 text-gray-400 hover:bg-indigo-900/20 hover:text-indigo-300 disabled:opacity-20 disabled:hover:bg-transparent"
         title="Undo (Ctrl+Z)"
       >
         ↩
@@ -345,14 +407,15 @@ export function TopToolbar() {
       <button
         onClick={cad.redo}
         disabled={!cad.canRedo}
-        className="mr-4 rounded px-2 py-1 text-gray-400 hover:bg-gray-700 disabled:opacity-30"
+        className="cad-toolbar-btn mr-4 rounded-lg px-2.5 py-1.5 text-gray-400 hover:bg-indigo-900/20 hover:text-indigo-300 disabled:opacity-20 disabled:hover:bg-transparent"
         title="Redo (Ctrl+Shift+Z)"
       >
         ↪
       </button>
 
-      <span className="rounded bg-green-900/50 px-2 py-0.5 text-green-400">
-        ● OCCT Ready
+      <span className="flex items-center rounded-full border border-green-800/30 bg-green-950/30 px-2.5 py-0.5 text-green-400">
+        <span className="cad-status-dot ready" />
+        OCCT Ready
       </span>
     </div>
   );

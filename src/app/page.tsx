@@ -22,6 +22,14 @@ import {
   Loader2,
 } from "lucide-react";
 import Footer from "@/components/Footer";
+import { ScrollReveal } from "@/components/animations/ScrollReveal";
+import { StaggerContainer } from "@/components/animations/StaggerContainer";
+import { TypewriterText } from "@/components/animations/TypewriterText";
+import { AnimatedCounter } from "@/components/animations/AnimatedCounter";
+import { TiltCard } from "@/components/animations/TiltCard";
+import { MagneticButton } from "@/components/animations/MagneticButton";
+import { GradientText } from "@/components/animations/GradientText";
+import { CursorGlow } from "@/components/animations/CursorGlow";
 
 const Scene3D = dynamic(() => import("@/components/Scene3D"), { ssr: false });
 
@@ -34,14 +42,25 @@ const stagger = {
   visible: { transition: { staggerChildren: 0.1 } },
 };
 
+function triggerRipple(e: React.MouseEvent<HTMLElement>) {
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  btn.style.setProperty("--ripple-x", `${e.clientX - rect.left}px`);
+  btn.style.setProperty("--ripple-y", `${e.clientY - rect.top}px`);
+  btn.classList.remove("rippling");
+  requestAnimationFrame(() => btn.classList.add("rippling"));
+  setTimeout(() => btn.classList.remove("rippling"), 400);
+}
+
 function HeroSection() {
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden">
       <div className="absolute inset-0 opacity-40">
         <Scene3D />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-surface-dark/40 via-transparent to-surface-dark" />
+      <div className="absolute inset-0 bg-gradient-to-b from-surface-dark/40 via-transparent to-surface-dark animate-gradient-shift" />
       <div className="absolute inset-0 bg-gradient-to-r from-surface-dark/60 via-transparent to-surface-dark/60" />
+      <CursorGlow size={250} color="rgba(99, 102, 241, 0.06)" />
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-20">
         <motion.div initial="hidden" animate="visible" variants={stagger} className="max-w-3xl">
@@ -57,9 +76,22 @@ function HeroSection() {
             variants={fadeUp}
             className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6"
           >
-            From description
-            <br />
-            <span className="text-brand">to 3D model</span> &mdash; instantly.
+            <TypewriterText
+              segments={[
+                { text: "From description" },
+                { text: "\n" },
+                { text: "to 3D model", className: "text-brand" },
+              ]}
+              speed={40}
+              delay={300}
+            />
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 2.5, duration: 0.5 }}
+            >
+              {" "}&mdash; instantly.
+            </motion.span>
           </motion.h1>
 
           <motion.p
@@ -73,7 +105,8 @@ function HeroSection() {
           <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4">
             <Link
               href="/generate"
-              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-brand hover:bg-brand-hover text-white font-semibold transition-all text-lg"
+              onClick={triggerRipple}
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl bg-brand hover:bg-brand-hover text-white font-semibold transition-all text-lg animate-pulse-glow btn-ripple"
             >
               <Wrench className="w-5 h-5" />
               Open Workspace
@@ -88,9 +121,17 @@ function HeroSection() {
           </motion.div>
 
           <motion.div variants={fadeUp} className="flex items-center gap-6 mt-10 text-sm text-gray-500">
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-brand" /> Free forever</span>
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-brand" /> STL export</span>
-            <span className="flex items-center gap-1.5"><Check className="w-4 h-4 text-brand" /> Manual editing</span>
+            {["Free forever", "STL export", "Manual editing"].map((badge, i) => (
+              <motion.span
+                key={badge}
+                initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20, delay: 2.8 + i * 0.15 }}
+                className="flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4 text-brand" /> {badge}
+              </motion.span>
+            ))}
           </motion.div>
         </motion.div>
       </div>
@@ -112,35 +153,33 @@ function FeaturesSection() {
     <section className="py-32 relative">
       <div className="absolute inset-0 cad-grid opacity-50" />
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="text-center mb-16"
-        >
-          <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl font-bold mb-4">
-            Everything you need to <span className="text-brand">model in 3D</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-2xl mx-auto">
-            AI-powered generation meets hands-on CAD tools. Design, iterate, and export — all in your browser.
-          </motion.p>
-        </motion.div>
+        <ScrollReveal direction="up">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              Everything you need to <span className="text-brand">model in 3D</span>
+            </h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              AI-powered generation meets hands-on CAD tools. Design, iterate, and export — all in your browser.
+            </p>
+          </div>
+        </ScrollReveal>
 
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        >
-          {features.map((f) => (
-            <motion.div
-              key={f.title} variants={fadeUp}
-              className="group p-6 rounded-2xl bg-white/[0.02] border border-surface-border hover:border-brand/30 hover:bg-white/[0.04] transition-all"
+        <StaggerContainer stagger={0.08} direction="up" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {features.map((f, i) => (
+            <TiltCard
+              key={f.title}
+              className="group p-6 rounded-2xl bg-white/[0.02] border border-surface-border hover:border-brand/30 hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] hover:bg-white/[0.04] transition-all duration-300"
             >
-              <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center mb-4 group-hover:bg-brand/20 transition-colors">
-                <f.icon className="w-6 h-6 text-brand" />
+              <div className="animate-float" style={{ animationDelay: `${i * 0.5}s` }}>
+                <div className="w-12 h-12 rounded-xl bg-brand/10 flex items-center justify-center mb-4 group-hover:bg-brand/20 transition-colors">
+                  <f.icon className="w-6 h-6 text-brand" />
+                </div>
               </div>
               <h3 className="text-lg font-semibold mb-2">{f.title}</h3>
               <p className="text-gray-400 text-sm leading-relaxed">{f.description}</p>
-            </motion.div>
+            </TiltCard>
           ))}
-        </motion.div>
+        </StaggerContainer>
       </div>
     </section>
   );
@@ -157,35 +196,51 @@ function BeneficiariesSection() {
   return (
     <section className="py-32 relative overflow-hidden">
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="text-center mb-16"
-        >
-          <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl font-bold mb-4">
-            Built for <span className="text-brand">everyone</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-2xl mx-auto">
-            You don&apos;t need to be an expert. If you can describe it, SpaceVision can help you build it.
-          </motion.p>
-        </motion.div>
+        <ScrollReveal direction="up">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              Built for <span className="text-brand">everyone</span>
+            </h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              You don&apos;t need to be an expert. If you can describe it, SpaceVision can help you build it.
+            </p>
+          </div>
+        </ScrollReveal>
 
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
-        >
-          {groups.map((g) => (
-            <motion.div
-              key={g.title} variants={fadeUp}
-              className="text-center p-8 rounded-2xl bg-white/[0.02] border border-surface-border hover:border-brand/20 transition-all"
-            >
-              <div className="w-14 h-14 rounded-2xl bg-brand/10 flex items-center justify-center mx-auto mb-4">
-                <g.icon className="w-7 h-7 text-brand" />
+        {/* Stats row */}
+        <div className="flex justify-center gap-12 mt-8 mb-12">
+          {[
+            { end: 10000, suffix: "+", label: "Models Created" },
+            { end: 50, suffix: "+", label: "Countries" },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <div className="text-3xl font-bold text-white">
+                <AnimatedCounter end={stat.end} suffix={stat.suffix} duration={2} />
               </div>
-              <h3 className="font-semibold mb-2">{g.title}</h3>
-              <p className="text-gray-400 text-sm">{g.description}</p>
-            </motion.div>
+              <div className="text-sm text-gray-400 mt-1">{stat.label}</div>
+            </div>
           ))}
-        </motion.div>
+          <div className="text-center">
+            <ScrollReveal direction="up" delay={0.3}>
+              <div className="text-3xl font-bold text-white">4.9</div>
+            </ScrollReveal>
+            <div className="text-sm text-gray-400 mt-1">User Rating</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {groups.map((g, i) => (
+            <ScrollReveal key={g.title} direction={i % 2 === 0 ? "left" : "right"} delay={i * 0.1}>
+              <div className="text-center p-8 rounded-2xl bg-white/[0.02] border border-surface-border hover:border-brand/20 hover:-translate-y-1.5 hover:shadow-lg hover:shadow-indigo-900/10 transition-all duration-250">
+                <div className="w-14 h-14 rounded-2xl bg-brand/10 flex items-center justify-center mx-auto mb-4">
+                  <g.icon className="w-7 h-7 text-brand" />
+                </div>
+                <h3 className="font-semibold mb-2">{g.title}</h3>
+                <p className="text-gray-400 text-sm">{g.description}</p>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -216,104 +271,104 @@ function DemoSection() {
     <section className="py-32 relative">
       <div className="absolute inset-0 cad-grid opacity-30" />
       <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="text-center mb-12"
-        >
-          <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl font-bold mb-4">
-            See it in <span className="text-brand">action</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg">
-            Type a prompt and watch SpaceVision generate a 3D model — right here.
-          </motion.p>
-        </motion.div>
+        <ScrollReveal direction="up">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              See it in <span className="text-brand">action</span>
+            </h2>
+            <p className="text-gray-400 text-lg">
+              Type a prompt and watch SpaceVision generate a 3D model — right here.
+            </p>
+          </div>
+        </ScrollReveal>
 
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-          className="rounded-2xl bg-surface/50 border border-surface-border overflow-hidden"
-        >
-          {/* Mini workspace header */}
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-surface-border bg-surface">
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <Wrench className="w-3.5 h-3.5 text-brand" />
-              <span className="font-medium text-gray-300">Live Demo</span>
-              {activePrompt && (
-                <>
-                  <span className="text-gray-600">/</span>
-                  <span className="text-gray-400 truncate max-w-[200px]">{activePrompt}</span>
-                </>
+        <ScrollReveal direction="up" delay={0.1}>
+          <div className="rounded-2xl bg-surface/50 border border-surface-border overflow-hidden">
+            {/* Mini workspace header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-surface-border bg-surface">
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <Wrench className="w-3.5 h-3.5 text-brand" />
+                <span className="font-medium text-gray-300">Live Demo</span>
+                {activePrompt && (
+                  <>
+                    <span className="text-gray-600">/</span>
+                    <span className="text-gray-400 truncate max-w-[200px]">{activePrompt}</span>
+                  </>
+                )}
+              </div>
+              {hasGenerated && (
+                <Link
+                  href={`/generate?prompt=${encodeURIComponent(activePrompt)}`}
+                  className="text-[11px] text-brand hover:text-brand-hover transition-colors font-medium flex items-center gap-1"
+                >
+                  Open in Workspace <ArrowRight className="w-3 h-3" />
+                </Link>
               )}
             </div>
-            {hasGenerated && (
-              <Link
-                href={`/generate?prompt=${encodeURIComponent(activePrompt)}`}
-                className="text-[11px] text-brand hover:text-brand-hover transition-colors font-medium flex items-center gap-1"
-              >
-                Open in Workspace <ArrowRight className="w-3 h-3" />
-              </Link>
-            )}
-          </div>
 
-          {/* 3D Viewport */}
-          <div className="relative h-[350px] sm:h-[400px] cad-grid">
-            {isGenerating ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-dark/60 z-10">
-                <Loader2 className="w-8 h-8 text-brand animate-spin" />
-                <p className="text-sm text-gray-400">Generating 3D model...</p>
-              </div>
-            ) : hasGenerated ? (
-              <ModelViewer prompt={activePrompt} className="w-full h-full" />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                <div className="w-16 h-16 rounded-2xl bg-surface-lighter/30 border border-surface-border flex items-center justify-center">
-                  <Box className="w-8 h-8 text-gray-600" />
+            {/* 3D Viewport */}
+            <div className="relative h-[350px] sm:h-[400px] cad-grid">
+              {isGenerating ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-dark/60 z-10">
+                  <Loader2 className="w-8 h-8 text-brand animate-spin" />
+                  <p className="text-sm text-gray-400">Generating 3D model...</p>
+                  <div className="animate-shimmer rounded-xl h-2 w-48 mt-2" />
                 </div>
-                <p className="text-sm text-gray-500">Enter a prompt below to generate a 3D model</p>
+              ) : hasGenerated ? (
+                <ModelViewer prompt={activePrompt} className="w-full h-full" />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <div className="w-16 h-16 rounded-2xl bg-surface-lighter/30 border border-surface-border flex items-center justify-center">
+                    <Box className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <p className="text-sm text-gray-500">Enter a prompt below to generate a 3D model</p>
+                </div>
+              )}
+            </div>
+
+            {/* Prompt bar */}
+            <div className="p-4 border-t border-surface-border bg-surface">
+              <div className="flex gap-3 mb-3">
+                <input
+                  type="text"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleGenerate(); }}
+                  placeholder="Describe a 3D model... (e.g. 'a red sports car')"
+                  className="flex-1 px-4 py-3 rounded-xl bg-surface-lighter border border-surface-border text-white placeholder-gray-500 focus:outline-none focus:border-brand/50 focus:shadow-[0_0_0_2px_rgba(99,102,241,0.15),0_0_15px_rgba(99,102,241,0.1)] transition-all duration-300 text-sm"
+                />
+                <MagneticButton strength={4} radius={100}>
+                  <button
+                    onClick={() => handleGenerate()}
+                    disabled={!prompt.trim() || isGenerating}
+                    className="px-6 py-3 rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-50 text-white font-semibold transition-all flex items-center gap-2 whitespace-nowrap text-sm btn-ripple"
+                  >
+                    {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Generate
+                  </button>
+                </MagneticButton>
               </div>
-            )}
-          </div>
-
-          {/* Prompt bar */}
-          <div className="p-4 border-t border-surface-border bg-surface">
-            <div className="flex gap-3 mb-3">
-              <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleGenerate(); }}
-                placeholder="Describe a 3D model... (e.g. 'a red sports car')"
-                className="flex-1 px-4 py-3 rounded-xl bg-surface-lighter border border-surface-border text-white placeholder-gray-500 focus:outline-none focus:border-brand/50 transition-all text-sm"
-              />
-              <button
-                onClick={() => handleGenerate()}
-                disabled={!prompt.trim() || isGenerating}
-                className="px-6 py-3 rounded-xl bg-brand hover:bg-brand-hover disabled:opacity-50 text-white font-semibold transition-all flex items-center gap-2 whitespace-nowrap text-sm"
-              >
-                {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                Generate
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {examples.map((ex) => (
-                <button
-                  key={ex}
-                  onClick={() => handleGenerate(ex)}
-                  className="px-3 py-1.5 rounded-lg text-xs text-gray-400 bg-surface-lighter hover:bg-surface-border hover:text-white transition-all border border-surface-border"
-                >
-                  {ex}
-                </button>
-              ))}
+              <StaggerContainer stagger={0.08} direction="up" className="flex flex-wrap gap-2">
+                {examples.map((ex) => (
+                  <button
+                    key={ex}
+                    onClick={() => handleGenerate(ex)}
+                    className="px-3 py-1.5 rounded-lg text-xs text-gray-400 bg-surface-lighter hover:bg-surface-border hover:text-white transition-all border border-surface-border"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </StaggerContainer>
             </div>
           </div>
-        </motion.div>
+        </ScrollReveal>
 
-        <motion.p
-          initial="hidden" whileInView="visible" viewport={{ once: true }} variants={fadeUp}
-          className="text-center text-gray-500 text-sm mt-6"
-        >
-          Rotate the model by dragging · Zoom with scroll · Pan with right-click ·{" "}
-          <Link href="/generate" className="text-brand hover:underline">Open full workspace</Link>
-        </motion.p>
+        <ScrollReveal direction="up" delay={0.2}>
+          <p className="text-center text-gray-500 text-sm mt-6">
+            Rotate the model by dragging · Zoom with scroll · Pan with right-click ·{" "}
+            <Link href="/generate" className="text-brand hover:underline">Open full workspace</Link>
+          </p>
+        </ScrollReveal>
       </div>
     </section>
   );
@@ -343,62 +398,60 @@ function PricingPreview() {
   return (
     <section className="py-32 relative">
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="text-center mb-16"
-        >
-          <motion.h2 variants={fadeUp} className="text-3xl sm:text-4xl font-bold mb-4">
-            Free for everyone, <span className="text-brand">powerful for creators</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg max-w-2xl mx-auto">
-            Start modeling for free. Upgrade when you need unlimited power and collaboration.
-          </motion.p>
-        </motion.div>
+        <ScrollReveal direction="up">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              Free for everyone, <span className="text-brand">powerful for creators</span>
+            </h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+              Start modeling for free. Upgrade when you need unlimited power and collaboration.
+            </p>
+          </div>
+        </ScrollReveal>
 
-        <motion.div
-          initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }}
-          variants={stagger} className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto"
-        >
-          {tiers.map((tier) => (
-            <motion.div
-              key={tier.name} variants={fadeUp}
-              className={`relative rounded-2xl p-8 ${
-                tier.highlighted
-                  ? "bg-brand/10 border-2 border-brand/40"
-                  : "bg-white/[0.02] border border-surface-border"
-              }`}
-            >
-              {tier.highlighted && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-brand text-xs font-semibold">
-                  <Star className="w-3 h-3 inline mr-1" /> Popular
-                </div>
-              )}
-              <h3 className="text-xl font-bold mb-1">{tier.name}</h3>
-              <p className="text-gray-400 text-sm mb-4">{tier.description}</p>
-              <div className="flex items-baseline gap-1 mb-6">
-                <span className="text-4xl font-bold">{tier.price}</span>
-                {tier.period && <span className="text-gray-500 text-sm">{tier.period}</span>}
-              </div>
-              <ul className="space-y-3 mb-8">
-                {tier.features.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm text-gray-300">
-                    <Check className="w-4 h-4 text-brand shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                href={tier.highlighted ? "/pricing" : "/generate"}
-                className={`block text-center px-6 py-3 rounded-xl font-semibold transition-all text-sm ${
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {tiers.map((tier, i) => (
+            <ScrollReveal key={tier.name} direction="up" delay={i * 0.1} scale={0.92}>
+              <div
+                className={`relative rounded-2xl p-8 ${
                   tier.highlighted
-                    ? "bg-brand hover:bg-brand-hover text-white"
-                    : "bg-white/5 hover:bg-white/10 text-white border border-surface-border"
+                    ? "bg-brand/10 border-2 border-brand/40"
+                    : "bg-white/[0.02] border border-surface-border"
                 }`}
               >
-                {tier.cta}
-              </Link>
-            </motion.div>
+                {tier.highlighted && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-brand text-xs font-semibold animate-pulse-glow">
+                    <Star className="w-3 h-3 inline mr-1" /> Popular
+                  </div>
+                )}
+                <h3 className="text-xl font-bold mb-1">{tier.name}</h3>
+                <p className="text-gray-400 text-sm mb-4">{tier.description}</p>
+                <div className="flex items-baseline gap-1 mb-6">
+                  <span className="text-4xl font-bold">{tier.price}</span>
+                  {tier.period && <span className="text-gray-500 text-sm">{tier.period}</span>}
+                </div>
+                <StaggerContainer stagger={0.05} direction="up" className="space-y-3 mb-8">
+                  {tier.features.map((f) => (
+                    <li key={f} className="flex items-center gap-2 text-sm text-gray-300 list-none">
+                      <Check className="w-4 h-4 text-brand shrink-0" /> {f}
+                    </li>
+                  ))}
+                </StaggerContainer>
+                <Link
+                  href={tier.highlighted ? "/pricing" : "/generate"}
+                  onClick={triggerRipple}
+                  className={`block text-center px-6 py-3 rounded-xl font-semibold transition-all text-sm btn-ripple ${
+                    tier.highlighted
+                      ? "bg-brand hover:bg-brand-hover text-white"
+                      : "bg-white/5 hover:bg-white/10 text-white border border-surface-border"
+                  }`}
+                >
+                  {tier.cta}
+                </Link>
+              </div>
+            </ScrollReveal>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   );
@@ -408,27 +461,31 @@ function CTASection() {
   return (
     <section className="py-32 relative overflow-hidden">
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}>
-          <motion.h2 variants={fadeUp} className="text-4xl sm:text-5xl font-bold mb-6">
-            Ready to start
-            <br />
-            <span className="text-brand">modeling in 3D?</span>
-          </motion.h2>
-          <motion.p variants={fadeUp} className="text-gray-400 text-lg mb-10 max-w-xl mx-auto">
+        <ScrollReveal direction="up">
+          <GradientText
+            as="h2"
+            colors={["#6366f1", "#a855f7", "#ec4899", "#6366f1"]}
+            speed={4}
+            className="text-4xl sm:text-5xl font-bold mb-6 inline-block"
+          >
+            Ready to start modeling in 3D?
+          </GradientText>
+          <p className="text-gray-400 text-lg mb-10 max-w-xl mx-auto">
             Join the community and start creating 3D models for free.
             No experience needed — just describe what you want to build.
-          </motion.p>
-          <motion.div variants={fadeUp}>
+          </p>
+          <div>
             <Link
               href="/generate"
-              className="inline-flex items-center gap-2 px-10 py-5 rounded-xl bg-brand hover:bg-brand-hover text-white font-semibold text-lg transition-all"
+              onClick={triggerRipple}
+              className="inline-flex items-center gap-2 px-10 py-5 rounded-xl bg-brand hover:bg-brand-hover text-white font-semibold text-lg transition-all animate-pulse-glow btn-ripple"
             >
               <Wrench className="w-5 h-5" />
               Open Workspace &mdash; It&apos;s Free
               <ArrowRight className="w-5 h-5" />
             </Link>
-          </motion.div>
-        </motion.div>
+          </div>
+        </ScrollReveal>
       </div>
     </section>
   );
@@ -436,7 +493,7 @@ function CTASection() {
 
 export default function Home() {
   return (
-    <>
+    <div className="landing-page">
       <HeroSection />
       <FeaturesSection />
       <BeneficiariesSection />
@@ -444,6 +501,6 @@ export default function Home() {
       <PricingPreview />
       <CTASection />
       <Footer />
-    </>
+    </div>
   );
 }

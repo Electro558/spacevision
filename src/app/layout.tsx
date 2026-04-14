@@ -4,6 +4,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Providers from "@/components/Providers";
 import ImpersonationBanner from "@/components/ImpersonationBanner";
+import { ScrollProgress } from "@/components/animations/ScrollProgress";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-surface-dark text-gray-200 min-h-screen`}>
         <Providers>
+          <ScrollProgress />
           <ImpersonationBanner />
           <Navbar />
           <main>{children}</main>

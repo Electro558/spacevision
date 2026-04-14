@@ -581,6 +581,90 @@ export function useSketchMode(
         });
       }
 
+      // ── Polygon Tool ──
+      if (activeTool === "polygon") {
+        if (!startPointRef.current) {
+          startPointRef.current = { x, y };
+          setState((prev) => ({ ...prev, isDrawing: true, currentPoints: [{ x, y }] }));
+        } else {
+          const center = startPointRef.current;
+          const dx = x - center.x;
+          const dy = y - center.y;
+          const radius = Math.sqrt(dx * dx + dy * dy);
+
+          if (radius > 0.01) {
+            const centerPt: SketchPoint = { id: newPointId(), x: center.x, y: center.y };
+            const polygon: SketchEntity = {
+              id: newEntityId(), type: "polygon", centerId: centerPt.id, radius, sides: 6,
+              construction: conFlag,
+            } as SketchEntity;
+            onUpdateSketch({
+              ...sketch,
+              points: [...sketch.points, centerPt],
+              entities: [...sketch.entities, polygon],
+            });
+          }
+          startPointRef.current = null;
+          setState(RESET_STATE);
+        }
+      }
+
+      // ── Ellipse Tool ──
+      if (activeTool === "ellipse") {
+        if (!startPointRef.current) {
+          startPointRef.current = { x, y };
+          setState((prev) => ({ ...prev, isDrawing: true, currentPoints: [{ x, y }] }));
+        } else {
+          const center = startPointRef.current;
+          const rx = Math.abs(x - center.x);
+          const ry = Math.abs(y - center.y);
+
+          if (rx > 0.01 && ry > 0.01) {
+            const centerPt: SketchPoint = { id: newPointId(), x: center.x, y: center.y };
+            const ellipse: SketchEntity = {
+              id: newEntityId(), type: "ellipse", centerId: centerPt.id, radiusX: rx, radiusY: ry,
+              construction: conFlag,
+            } as SketchEntity;
+            onUpdateSketch({
+              ...sketch,
+              points: [...sketch.points, centerPt],
+              entities: [...sketch.entities, ellipse],
+            });
+          }
+          startPointRef.current = null;
+          setState(RESET_STATE);
+        }
+      }
+
+      // ── Slot Tool ──
+      if (activeTool === "slot") {
+        if (!startPointRef.current) {
+          startPointRef.current = { x, y };
+          setState((prev) => ({ ...prev, isDrawing: true, currentPoints: [{ x, y }] }));
+        } else {
+          const start = startPointRef.current;
+          const dx = x - start.x;
+          const dy = y - start.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+
+          if (len > 0.01) {
+            const startPt: SketchPoint = { id: newPointId(), x: start.x, y: start.y };
+            const endPt: SketchPoint = { id: newPointId(), x, y };
+            const slot: SketchEntity = {
+              id: newEntityId(), type: "slot", startId: startPt.id, endId: endPt.id, width: Math.max(len * 0.3, 2),
+              construction: conFlag,
+            } as SketchEntity;
+            onUpdateSketch({
+              ...sketch,
+              points: [...sketch.points, startPt, endPt],
+              entities: [...sketch.entities, slot],
+            });
+          }
+          startPointRef.current = null;
+          setState(RESET_STATE);
+        }
+      }
+
       if (activeTool === "select") {
         setState((prev) => ({ ...prev, selectedEntityIds: new Set() }));
       }
@@ -715,6 +799,9 @@ function getEntityPointIds(entity: SketchEntity): string[] {
     case "arc": return [entity.centerId, entity.startId, entity.endId];
     case "rectangle": return [entity.originId];
     case "spline": return entity.controlPointIds;
+    case "polygon": return [entity.centerId];
+    case "ellipse": return [entity.centerId];
+    case "slot": return [entity.startId, entity.endId];
   }
 }
 
@@ -768,6 +855,25 @@ function distanceToEntity(
         if (d < minDist) minDist = d;
       }
       return minDist;
+    }
+    case "polygon": {
+      const c = ptMap.get(entity.centerId);
+      if (!c) return Infinity;
+      const r = entity.radius;
+      return pointToCircleDistance(point, c, r);
+    }
+    case "ellipse": {
+      const c = ptMap.get(entity.centerId);
+      if (!c) return Infinity;
+      // Approximate: use average radius
+      const avgR = (entity.radiusX + entity.radiusY) / 2;
+      return pointToCircleDistance(point, c, avgR);
+    }
+    case "slot": {
+      const s = ptMap.get(entity.startId);
+      const e = ptMap.get(entity.endId);
+      if (!s || !e) return Infinity;
+      return pointToSegmentDistance(point, s, e).distance;
     }
   }
 }

@@ -143,6 +143,17 @@ function getMidpoint(
       const mid = pointMap.get(entity.controlPointIds[midIdx]);
       return mid ?? null;
     }
+    case "polygon":
+    case "ellipse": {
+      const c = pointMap.get(entity.centerId);
+      return c ?? null;
+    }
+    case "slot": {
+      const s = pointMap.get(entity.startId);
+      const e = pointMap.get(entity.endId);
+      if (!s || !e) return null;
+      return { x: (s.x + e.x) / 2, y: (s.y + e.y) / 2 };
+    }
   }
 }
 

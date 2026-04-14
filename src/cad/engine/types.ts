@@ -53,7 +53,34 @@ export interface SketchSpline {
   construction?: boolean;
 }
 
-export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle | SketchSpline;
+export interface SketchPolygon {
+  id: string;
+  type: "polygon";
+  centerId: string;
+  radius: number;
+  sides: number;
+  construction?: boolean;
+}
+
+export interface SketchEllipse {
+  id: string;
+  type: "ellipse";
+  centerId: string;
+  radiusX: number;
+  radiusY: number;
+  construction?: boolean;
+}
+
+export interface SketchSlot {
+  id: string;
+  type: "slot";
+  startId: string;
+  endId: string;
+  width: number;
+  construction?: boolean;
+}
+
+export type SketchEntity = SketchLine | SketchCircle | SketchArc | SketchRectangle | SketchSpline | SketchPolygon | SketchEllipse | SketchSlot;
 
 // ── Sketch Constraints — discriminated union ──
 
@@ -292,6 +319,67 @@ export interface HoleFeature {
   countersinkAngle?: number; // degrees
 }
 
+export type PrimitiveType = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "pipe";
+
+export interface PrimitiveFeature {
+  id: string;
+  type: "primitive";
+  name: string;
+  suppressed: boolean;
+  primitiveType: PrimitiveType;
+  // Position
+  position: { x: number; y: number; z: number };
+  // Box params
+  width?: number;
+  height?: number;
+  length?: number;
+  // Cylinder/Cone/Pipe params
+  radius?: number;
+  radius2?: number; // top radius for cone, outer radius for torus
+  depth?: number;
+  // Sphere params (uses radius)
+  // Torus params (uses radius for major, radius2 for minor)
+  // Wedge params (uses width, height, length + ltx for top length)
+  ltx?: number;
+  // Pipe params (uses radius for outer, radius2 for inner, depth for height)
+  operation: "add" | "cut";
+  colorOverride?: string;
+}
+
+export interface ThreadFeature {
+  id: string;
+  type: "thread";
+  name: string;
+  suppressed: boolean;
+  position: { x: number; y: number; z: number };
+  axis: "x" | "y" | "z";
+  diameter: number;
+  pitch: number;
+  length: number;
+  internal: boolean; // true = tapped hole, false = external thread
+  colorOverride?: string;
+}
+
+export interface RibFeature {
+  id: string;
+  type: "rib";
+  name: string;
+  suppressed: boolean;
+  sketchId: string;
+  thickness: number | string;
+  direction: "normal" | "reverse";
+  colorOverride?: string;
+}
+
+export interface DomeFeature {
+  id: string;
+  type: "dome";
+  name: string;
+  suppressed: boolean;
+  height: number;
+  colorOverride?: string;
+}
+
 export type Feature =
   | SketchFeature
   | ExtrudeFeature
@@ -305,7 +393,11 @@ export type Feature =
   | CircularPatternFeature
   | MirrorBodyFeature
   | BooleanFeature
-  | HoleFeature;
+  | HoleFeature
+  | PrimitiveFeature
+  | ThreadFeature
+  | RibFeature
+  | DomeFeature;
 
 export interface Parameter {
   name: string;
@@ -394,6 +486,7 @@ export interface ErrorPayload {
 export type CadTool =
   | "select" | "line" | "circle" | "rectangle" | "arc" | "trim" | "mirror" | "offset"
   | "spline" | "sketch-fillet" | "sketch-chamfer"
+  | "polygon" | "ellipse" | "slot"
   | "constraint-horizontal" | "constraint-vertical" | "constraint-perpendicular"
   | "constraint-parallel" | "constraint-equal" | "constraint-fixed";
 export type ViewMode = "shaded" | "wireframe" | "xray" | "measure";

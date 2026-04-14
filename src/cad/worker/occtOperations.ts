@@ -1,6 +1,6 @@
 // src/cad/worker/occtOperations.ts
 
-import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, BooleanFeature, HoleFeature, Parameter } from "../engine/types";
+import type { Feature, SketchFeature, ExtrudeFeature, RevolveFeature, FilletFeature, ChamferFeature, LoftFeature, SweepFeature, ShellFeature, LinearPatternFeature, CircularPatternFeature, MirrorBodyFeature, BooleanFeature, HoleFeature, PrimitiveFeature, ThreadFeature, RibFeature, DomeFeature, Parameter } from "../engine/types";
 
 /**
  * Resolves a value that may be a number or a "$paramName" reference.
@@ -148,6 +148,78 @@ export function buildSketchWires(
       if (entity.closed) {
         wires.push(wireMaker.Wire());
       }
+    } else if (entity.type === "polygon") {
+      const center = pointMap.get(entity.centerId);
+      if (!center) continue;
+      const r = entity.radius;
+      const sides = entity.sides;
+      const wireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+      for (let i = 0; i < sides; i++) {
+        const a1 = (2 * Math.PI * i) / sides;
+        const a2 = (2 * Math.PI * (i + 1)) / sides;
+        const p1 = to3D(center.x + Math.cos(a1) * r, center.y + Math.sin(a1) * r);
+        const p2 = to3D(center.x + Math.cos(a2) * r, center.y + Math.sin(a2) * r);
+        const edge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2).Edge();
+        wireMaker.Add_1(edge);
+      }
+      wires.push(wireMaker.Wire());
+    } else if (entity.type === "ellipse") {
+      const center = pointMap.get(entity.centerId);
+      if (!center) continue;
+      // Approximate ellipse as polyline
+      const wireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+      const segments = 64;
+      for (let i = 0; i < segments; i++) {
+        const a1 = (2 * Math.PI * i) / segments;
+        const a2 = (2 * Math.PI * (i + 1)) / segments;
+        const p1 = to3D(center.x + Math.cos(a1) * entity.radiusX, center.y + Math.sin(a1) * entity.radiusY);
+        const p2 = to3D(center.x + Math.cos(a2) * entity.radiusX, center.y + Math.sin(a2) * entity.radiusY);
+        const edge = new oc.BRepBuilderAPI_MakeEdge_3(p1, p2).Edge();
+        wireMaker.Add_1(edge);
+      }
+      wires.push(wireMaker.Wire());
+    } else if (entity.type === "slot") {
+      const start = pointMap.get(entity.startId);
+      const end = pointMap.get(entity.endId);
+      if (!start || !end) continue;
+      const hw = entity.width / 2;
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 0.01) continue;
+      const nx = -dy / len * hw;
+      const ny = dx / len * hw;
+      // Slot = rectangle with semicircles on ends
+      const wireMaker = new oc.BRepBuilderAPI_MakeWire_1();
+      // Top straight edge
+      const p1 = to3D(start.x + nx, start.y + ny);
+      const p2 = to3D(end.x + nx, end.y + ny);
+      wireMaker.Add_1(new oc.BRepBuilderAPI_MakeEdge_3(p1, p2).Edge());
+      // End semicircle
+      const endCenter3D = to3D(end.x, end.y);
+      const endAx2 = new oc.gp_Ax2_3(endCenter3D, planeNormal());
+      const endCircle = new oc.GC_MakeCircle_2(endAx2, hw).Value();
+      const endArcEdge = new oc.BRepBuilderAPI_MakeEdge_10(
+        new oc.Handle_Geom_Curve_2(endCircle.get()),
+        to3D(end.x + nx, end.y + ny),
+        to3D(end.x - nx, end.y - ny)
+      ).Edge();
+      wireMaker.Add_1(endArcEdge);
+      // Bottom straight edge
+      const p3 = to3D(end.x - nx, end.y - ny);
+      const p4 = to3D(start.x - nx, start.y - ny);
+      wireMaker.Add_1(new oc.BRepBuilderAPI_MakeEdge_3(p3, p4).Edge());
+      // Start semicircle
+      const startCenter3D = to3D(start.x, start.y);
+      const startAx2 = new oc.gp_Ax2_3(startCenter3D, planeNormal());
+      const startCircle = new oc.GC_MakeCircle_2(startAx2, hw).Value();
+      const startArcEdge = new oc.BRepBuilderAPI_MakeEdge_10(
+        new oc.Handle_Geom_Curve_2(startCircle.get()),
+        to3D(start.x - nx, start.y - ny),
+        to3D(start.x + nx, start.y + ny)
+      ).Edge();
+      wireMaker.Add_1(startArcEdge);
+      wires.push(wireMaker.Wire());
     } else if (entity.type === "line") {
       // Single lines don't form closed wires by themselves.
       // For Phase 1, we only extrude closed profiles (rectangles, circles).
@@ -950,7 +1022,239 @@ export function rebuildFromFeatureTree(
     if (feature.type === "hole") {
       currentShape = performHole(oc, feature, parameters, currentShape);
     }
+
+    if (feature.type === "primitive") {
+      currentShape = performPrimitive(oc, feature, parameters, currentShape);
+    }
+
+    if (feature.type === "thread") {
+      currentShape = performThread(oc, feature, parameters, currentShape);
+    }
+
+    if (feature.type === "rib") {
+      const sketch = sketchMap.get(feature.sketchId);
+      if (sketch) {
+        currentShape = performRib(oc, sketch.sketch, feature, parameters, currentShape);
+      }
+    }
+
+    if (feature.type === "dome") {
+      currentShape = performDome(oc, feature, parameters, currentShape);
+    }
   }
 
   return currentShape;
+}
+
+// ── Primitive Solids ──
+
+function performPrimitive(
+  oc: any,
+  feature: PrimitiveFeature,
+  parameters: Record<string, Parameter>,
+  currentShape: any | null
+): any {
+  const pos = feature.position;
+  let shape: any;
+
+  switch (feature.primitiveType) {
+    case "box": {
+      const w = feature.width ?? 20;
+      const h = feature.height ?? 20;
+      const l = feature.length ?? 20;
+      const origin = new oc.gp_Pnt_3(pos.x - w/2, pos.y - h/2, pos.z - l/2);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const maker = new oc.BRepPrimAPI_MakeBox_3(ax2, w, h, l);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "cylinder": {
+      const r = feature.radius ?? 10;
+      const d = feature.depth ?? 20;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const maker = new oc.BRepPrimAPI_MakeCylinder_3(ax2, r, d);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "sphere": {
+      const r = feature.radius ?? 10;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const maker = new oc.BRepPrimAPI_MakeSphere_3(origin, r);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "cone": {
+      const r1 = feature.radius ?? 10;
+      const r2 = feature.radius2 ?? 0;
+      const d = feature.depth ?? 20;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const maker = new oc.BRepPrimAPI_MakeCone_3(ax2, r1, Math.max(r2, 0.001), d);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "torus": {
+      const r1 = feature.radius ?? 15;
+      const r2 = feature.radius2 ?? 5;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const maker = new oc.BRepPrimAPI_MakeTorus_3(ax2, r1, r2);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "wedge": {
+      const w = feature.width ?? 20;
+      const h = feature.height ?? 20;
+      const l = feature.length ?? 20;
+      const ltx = feature.ltx ?? 10;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const maker = new oc.BRepPrimAPI_MakeWedge_3(ax2, w, h, l, ltx);
+      maker.Build(new oc.Message_ProgressRange_1());
+      shape = maker.Shape();
+      break;
+    }
+    case "pipe": {
+      // Pipe = outer cylinder - inner cylinder
+      const r1 = feature.radius ?? 10;
+      const r2 = feature.radius2 ?? 8;
+      const d = feature.depth ?? 20;
+      const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+      const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(0, 0, 1));
+      const outer = new oc.BRepPrimAPI_MakeCylinder_3(ax2, r1, d);
+      outer.Build(new oc.Message_ProgressRange_1());
+      const inner = new oc.BRepPrimAPI_MakeCylinder_3(ax2, Math.min(r2, r1 - 0.1), d);
+      inner.Build(new oc.Message_ProgressRange_1());
+      const cut = new oc.BRepAlgoAPI_Cut_3(outer.Shape(), inner.Shape(), new oc.Message_ProgressRange_1());
+      cut.Build(new oc.Message_ProgressRange_1());
+      shape = cut.Shape();
+      break;
+    }
+  }
+
+  if (!currentShape) return shape;
+
+  if (feature.operation === "cut") {
+    const cut = new oc.BRepAlgoAPI_Cut_3(currentShape, shape, new oc.Message_ProgressRange_1());
+    cut.Build(new oc.Message_ProgressRange_1());
+    return cut.Shape();
+  } else {
+    const fuse = new oc.BRepAlgoAPI_Fuse_3(currentShape, shape, new oc.Message_ProgressRange_1());
+    fuse.Build(new oc.Message_ProgressRange_1());
+    return fuse.Shape();
+  }
+}
+
+// ── Thread (cosmetic — rendered as helical cut for visual representation) ──
+
+function performThread(
+  oc: any,
+  feature: ThreadFeature,
+  _parameters: Record<string, Parameter>,
+  currentShape: any | null
+): any {
+  // Thread is cosmetic: create a cylinder at the thread location
+  // A proper thread would use a helical sweep, but that's expensive.
+  // For visual representation, we create a cylinder with slightly reduced radius for external
+  // or a hole for internal threads.
+  const pos = feature.position;
+  const r = feature.diameter / 2;
+  const len = feature.length;
+
+  let dirX = 0, dirY = 0, dirZ = 0;
+  switch (feature.axis) {
+    case "x": dirX = 1; break;
+    case "y": dirY = 1; break;
+    case "z": dirZ = 1; break;
+  }
+
+  const origin = new oc.gp_Pnt_3(pos.x, pos.y, pos.z);
+  const ax2 = new oc.gp_Ax2_3(origin, new oc.gp_Dir_4(dirX, dirY, dirZ));
+
+  if (feature.internal) {
+    // Internal thread = cut a cylinder
+    const cyl = new oc.BRepPrimAPI_MakeCylinder_3(ax2, r, len);
+    cyl.Build(new oc.Message_ProgressRange_1());
+    if (!currentShape) return currentShape;
+    const cut = new oc.BRepAlgoAPI_Cut_3(currentShape, cyl.Shape(), new oc.Message_ProgressRange_1());
+    cut.Build(new oc.Message_ProgressRange_1());
+    return cut.Shape();
+  } else {
+    // External thread = add a cylinder
+    const cyl = new oc.BRepPrimAPI_MakeCylinder_3(ax2, r, len);
+    cyl.Build(new oc.Message_ProgressRange_1());
+    if (!currentShape) return cyl.Shape();
+    const fuse = new oc.BRepAlgoAPI_Fuse_3(currentShape, cyl.Shape(), new oc.Message_ProgressRange_1());
+    fuse.Build(new oc.Message_ProgressRange_1());
+    return fuse.Shape();
+  }
+}
+
+// ── Rib (thin extrusion from a sketch profile) ──
+
+function performRib(
+  oc: any,
+  sketch: SketchFeature["sketch"],
+  feature: RibFeature,
+  parameters: Record<string, Parameter>,
+  currentShape: any | null
+): any {
+  const thickness = resolveValue(feature.thickness, parameters);
+  const wires = buildSketchWires(oc, sketch, parameters);
+  if (wires.length === 0) return currentShape;
+
+  const wire = wires[0];
+  const face = new oc.BRepBuilderAPI_MakeFace_15(wire, true);
+  face.Build(new oc.Message_ProgressRange_1());
+
+  let dirVec: any;
+  switch (sketch.plane) {
+    case "XY": dirVec = new oc.gp_Vec_4(0, 0, feature.direction === "reverse" ? -thickness : thickness); break;
+    case "XZ": dirVec = new oc.gp_Vec_4(0, feature.direction === "reverse" ? -thickness : thickness, 0); break;
+    case "YZ": dirVec = new oc.gp_Vec_4(feature.direction === "reverse" ? -thickness : thickness, 0, 0); break;
+  }
+
+  const prism = new oc.BRepPrimAPI_MakePrism_1(face.Face(), dirVec, false, true);
+  prism.Build(new oc.Message_ProgressRange_1());
+  const ribShape = prism.Shape();
+
+  if (!currentShape) return ribShape;
+  const fuse = new oc.BRepAlgoAPI_Fuse_3(currentShape, ribShape, new oc.Message_ProgressRange_1());
+  fuse.Build(new oc.Message_ProgressRange_1());
+  return fuse.Shape();
+}
+
+// ── Dome (hemisphere added to top face) ──
+
+function performDome(
+  oc: any,
+  feature: DomeFeature,
+  _parameters: Record<string, Parameter>,
+  currentShape: any | null
+): any {
+  if (!currentShape) return currentShape;
+
+  // Create a hemisphere on top of the current shape
+  const h = feature.height;
+  const origin = new oc.gp_Pnt_3(0, 0, 0);
+  // Create a sphere and cut it in half
+  const sphere = new oc.BRepPrimAPI_MakeSphere_3(origin, h * 2);
+  sphere.Build(new oc.Message_ProgressRange_1());
+  // Cut the bottom half
+  const boxOrigin = new oc.gp_Pnt_3(-h * 3, -h * 3, -h * 6);
+  const ax2 = new oc.gp_Ax2_3(boxOrigin, new oc.gp_Dir_4(0, 0, 1));
+  const cutter = new oc.BRepPrimAPI_MakeBox_3(ax2, h * 6, h * 6, h * 6);
+  cutter.Build(new oc.Message_ProgressRange_1());
+  const half = new oc.BRepAlgoAPI_Cut_3(sphere.Shape(), cutter.Shape(), new oc.Message_ProgressRange_1());
+  half.Build(new oc.Message_ProgressRange_1());
+
+  const fuse = new oc.BRepAlgoAPI_Fuse_3(currentShape, half.Shape(), new oc.Message_ProgressRange_1());
+  fuse.Build(new oc.Message_ProgressRange_1());
+  return fuse.Shape();
 }

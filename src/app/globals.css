@@ -27,4 +27,347 @@ body {
   background-size: 40px 40px;
 }
 
-input[type="range"] { accent-color: #3b82f6; }
+/* ── CAD Workspace Animations & Theming ── */
+
+/* Animated range slider */
+input[type="range"].cad-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1e1b4b 0%, #312e81 100%);
+  outline: none;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+}
+input[type="range"].cad-slider:hover {
+  background: linear-gradient(90deg, #312e81 0%, #4338ca 100%);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.3);
+}
+input[type="range"].cad-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #818cf8, #4f46e5);
+  border: 2px solid #c7d2fe;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5), 0 0 20px rgba(99, 102, 241, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+input[type="range"].cad-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.7), 0 0 30px rgba(99, 102, 241, 0.3);
+}
+input[type="range"].cad-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+  background: radial-gradient(circle at 40% 40%, #a5b4fc, #6366f1);
+}
+input[type="range"].cad-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 40%, #818cf8, #4f46e5);
+  border: 2px solid #c7d2fe;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+input[type="range"].cad-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1e1b4b 0%, #312e81 100%);
+}
+
+/* Styled text/number inputs */
+.cad-input {
+  background: rgba(30, 27, 75, 0.5) !important;
+  border: 1px solid rgba(99, 102, 241, 0.2) !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  color: #e0e7ff !important;
+  font-size: 12px;
+  transition: all 0.25s ease;
+  backdrop-filter: blur(4px);
+}
+.cad-input:hover {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  background: rgba(30, 27, 75, 0.7) !important;
+}
+.cad-input:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), 0 0 12px rgba(99, 102, 241, 0.15) !important;
+  background: rgba(30, 27, 75, 0.8) !important;
+  outline: none !important;
+}
+
+/* Styled selects */
+.cad-select {
+  background: rgba(30, 27, 75, 0.5) !important;
+  border: 1px solid rgba(99, 102, 241, 0.2) !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  color: #e0e7ff !important;
+  font-size: 12px;
+  transition: all 0.25s ease;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.cad-select:hover {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+  background: rgba(30, 27, 75, 0.7) !important;
+}
+.cad-select:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15), 0 0 12px rgba(99, 102, 241, 0.15) !important;
+  outline: none !important;
+}
+.cad-select option {
+  background: #1e1b4b;
+  color: #e0e7ff;
+}
+
+/* Property labels */
+.cad-label {
+  color: #94a3b8;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+/* Feature tree items */
+.cad-tree-item {
+  transition: all 0.2s ease;
+  border-left: 2px solid transparent;
+  padding-left: 4px;
+}
+.cad-tree-item:hover {
+  border-left-color: rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+.cad-tree-item.selected {
+  border-left-color: #6366f1;
+  background: rgba(99, 102, 241, 0.15) !important;
+}
+
+/* Toolbar buttons */
+.cad-toolbar-btn {
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.cad-toolbar-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.cad-toolbar-btn:hover::after {
+  opacity: 1;
+}
+.cad-toolbar-btn:active {
+  transform: scale(0.96);
+}
+
+/* Glowing status indicator */
+.cad-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+  animation: cad-pulse 2s ease-in-out infinite;
+}
+.cad-status-dot.ready { background: #34d399; }
+.cad-status-dot.loading { background: #fbbf24; }
+.cad-status-dot.error { background: #f87171; }
+
+@keyframes cad-pulse {
+  0%, 100% { box-shadow: 0 0 4px currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 12px currentColor, 0 0 20px currentColor; opacity: 0.8; }
+}
+
+/* Panel section headers */
+.cad-panel-header {
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), transparent);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+
+/* Animated delete button */
+.cad-delete-btn {
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+.cad-delete-btn:hover {
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  transform: translateY(-1px);
+}
+.cad-delete-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Smooth menu dropdown */
+.cad-menu-dropdown {
+  animation: cad-menu-in 0.15s ease-out;
+  transform-origin: top left;
+}
+@keyframes cad-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Property value badge */
+.cad-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+.cad-badge.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+.cad-badge.suppressed {
+  background: rgba(107, 114, 128, 0.2);
+  color: #9ca3af;
+  border: 1px solid rgba(107, 114, 128, 0.3);
+}
+
+/* Sketch toolbar button */
+.cad-sketch-btn {
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+.cad-sketch-btn:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.15);
+}
+.cad-sketch-btn.active {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.25), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* Smooth panel scrolling */
+.cad-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.3) transparent;
+}
+.cad-panel::-webkit-scrollbar { width: 4px; }
+.cad-panel::-webkit-scrollbar-track { background: transparent; }
+.cad-panel::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 2px;
+}
+.cad-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.5);
+}
+
+/* Color picker */
+.cad-color-picker {
+  border: 2px solid rgba(99, 102, 241, 0.3) !important;
+  border-radius: 6px !important;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.cad-color-picker:hover {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.2);
+}
+
+/* Fallback for non-class range inputs */
+input[type="range"] { accent-color: #6366f1; }
+
+/* ── Landing Page Animations ── */
+
+.landing-page {
+  scroll-behavior: smooth;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.5), 0 0 40px rgba(99, 102, 241, 0.15); }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes gradient-text {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes ripple {
+  0% { transform: scale(0); opacity: 0.5; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+/* Ripple button base */
+.btn-ripple {
+  position: relative;
+  overflow: hidden;
+}
+.btn-ripple::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+}
+.btn-ripple.rippling::after {
+  animation: ripple 0.4s ease-out forwards;
+}
+
+/* Float animation utility */
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Pulse glow utility */
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* Gradient shift background */
+.animate-gradient-shift {
+  background-size: 200% 200%;
+  animation: gradient-shift 8s ease-in-out infinite;
+}
+
+/* Shimmer skeleton */
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(99,102,241,0.05) 25%, rgba(99,102,241,0.1) 50%, rgba(99,102,241,0.05) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}

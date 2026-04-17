@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { AnimatePresence } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { useCad } from "../context/CadContext";
 import { OcctLoadingScreen } from "./OcctLoadingScreen";
 import { TopToolbar } from "./TopToolbar";
@@ -8,6 +10,8 @@ import { SketchToolbar } from "./SketchToolbar";
 import { CadViewport } from "./CadViewport";
 import { StatusBar } from "./StatusBar";
 import { ShortcutHelp } from "./ShortcutHelp";
+import { AiChatPanel } from "./AiChatPanel";
+import { useAiChat } from "../hooks/useAiChat";
 import {
   createExtrude,
   createFillet,
@@ -17,6 +21,14 @@ import type { SketchFeature, ViewPreset } from "../engine/types";
 export function CadWorkspace() {
   const cad = useCad();
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
+
+  const aiChat = useAiChat({
+    project: cad.project,
+    addFeature: cad.addFeature,
+    updateFeature: cad.updateFeature,
+    removeFeature: cad.removeFeature,
+  });
 
   // Listen for custom event to open shortcut help (from toolbar)
   useEffect(() => {
@@ -178,7 +190,7 @@ export function CadWorkspace() {
       <TopToolbar />
       <SketchToolbar />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Feature tree — left */}
         <div className="cad-panel w-56 overflow-y-auto border-r border-gray-800/50 bg-[#0f0f24]/95 p-2 text-xs backdrop-blur-sm">
           <div className="cad-panel-header text-indigo-300">Feature Tree</div>
@@ -928,7 +940,42 @@ export function CadWorkspace() {
         </div>
       </div>
 
+      {/* AI Panel — animated slide-in from right */}
+      <AnimatePresence>
+        {showAiPanel && (
+          <div className="absolute right-0 top-0 bottom-0 z-20 flex">
+            <AiChatPanel
+              messages={aiChat.messages}
+              isStreaming={aiChat.isStreaming}
+              input={aiChat.input}
+              setInput={aiChat.setInput}
+              sendMessage={aiChat.sendMessage}
+              stop={aiChat.stop}
+              clearHistory={aiChat.clearHistory}
+              onClose={() => setShowAiPanel(false)}
+            />
+          </div>
+        )}
+      </AnimatePresence>
+
       <StatusBar />
+
+      {/* AI toggle button — floating bottom-right */}
+      <button
+        onClick={() => setShowAiPanel((prev) => !prev)}
+        title="AI CAD Assistant"
+        className={`absolute bottom-10 right-4 z-30 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium shadow-lg transition-all duration-200 ${
+          showAiPanel
+            ? "bg-indigo-600 text-white border border-indigo-400/50 shadow-indigo-900/40"
+            : "bg-[#0f0f24]/90 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600/20 hover:text-indigo-300 animate-pulse-glow"
+        }`}
+      >
+        <Sparkles className="h-3.5 w-3.5" />
+        {showAiPanel ? "Close AI" : "AI Assistant"}
+        {aiChat.isStreaming && (
+          <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-400 animate-pulse" />
+        )}
+      </button>
 
       {showShortcutHelp && (
         <ShortcutHelp onClose={() => setShowShortcutHelp(false)} />
